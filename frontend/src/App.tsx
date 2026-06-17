@@ -10,6 +10,10 @@ import WorkOrderList from './pages/WorkOrderList';
 import WorkOrderDetail from './pages/WorkOrderDetail';
 import UserManage from './pages/UserManage';
 import RoleManage from './pages/RoleManage';
+import InspectionList from './pages/InspectionList';
+import InspectionPlanForm from './pages/InspectionPlanForm';
+import InspectionCheckin from './pages/InspectionCheckin';
+import InspectionExceptionReport from './pages/InspectionExceptionReport';
 
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   const { isLoggedIn } = useAuth();
@@ -30,6 +34,11 @@ function App() {
             <Route path="events/map" element={<EventMap />} />
             <Route path="workorders" element={<WorkOrderList />} />
             <Route path="workorders/:id" element={<WorkOrderDetail />} />
+            <Route path="inspection" element={<InspectionList />} />
+            <Route path="inspection/plans/new" element={<InspectionPlanForm />} />
+            <Route path="inspection/plans/:id/edit" element={<InspectionPlanForm />} />
+            <Route path="inspection/tasks/:id/checkin" element={<InspectionCheckin />} />
+            <Route path="inspection/tasks/:id/exception" element={<InspectionExceptionReport />} />
             <Route path="system/users" element={<UserManage />} />
             <Route path="system/roles" element={<RoleManage />} />
           </Route>

@@ -10,6 +10,8 @@ import {
   UserOutlined,
   LogoutOutlined,
   SettingOutlined,
+  CheckCircleOutlined,
+  ExclamationCircleOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useState } from 'react';
@@ -43,6 +45,14 @@ const MainLayout = () => {
       key: '/workorders',
       icon: <FileTextOutlined />,
       label: '工单流转',
+    },
+    {
+      key: 'inspection',
+      icon: <CheckCircleOutlined />,
+      label: '巡检管理',
+      children: [
+        { key: '/inspection', icon: <UnorderedListOutlined />, label: '巡检列表' },
+      ],
     },
     {
       key: 'system',
@@ -79,6 +89,9 @@ const MainLayout = () => {
     if (path.startsWith('/events')) {
       return [path, 'events'];
     }
+    if (path.startsWith('/inspection')) {
+      return ['/inspection', 'inspection'];
+    }
     if (path.startsWith('/system')) {
       return [path, 'system'];
     }
@@ -110,7 +123,7 @@ const MainLayout = () => {
           theme="dark"
           mode="inline"
           selectedKeys={getSelectedKeys()}
-          defaultOpenKeys={['events', 'system']}
+          defaultOpenKeys={['events', 'inspection', 'system']}
           items={menuItems}
           onClick={({ key }) => navigate(key)}
         />
