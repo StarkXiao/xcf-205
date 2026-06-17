@@ -12,6 +12,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { KnowledgeModule } from './knowledge/knowledge.module';
 import { PerformanceModule } from './performance/performance.module';
 import { ApprovalsModule } from './approvals/approvals.module';
+import { AttachmentsModule } from './attachments/attachments.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { ApprovalsModule } from './approvals/approvals.module';
     KnowledgeModule,
     PerformanceModule,
     ApprovalsModule,
+    AttachmentsModule,
   ],
 })
 export class AppModule {}

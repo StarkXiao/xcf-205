@@ -16,6 +16,7 @@ import {
   BookOutlined,
   TrophyOutlined,
   AuditOutlined,
+  PaperClipOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useState } from 'react';
@@ -77,6 +78,11 @@ const MainLayout = () => {
       key: '/knowledge',
       icon: <BookOutlined />,
       label: '知识库',
+    },
+    {
+      key: '/attachments',
+      icon: <PaperClipOutlined />,
+      label: '附件管理',
     },
     {
       key: '/performance',

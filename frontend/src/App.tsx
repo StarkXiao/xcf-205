@@ -21,6 +21,7 @@ import DepartmentPerformance from './pages/DepartmentPerformance';
 import ApprovalList from './pages/ApprovalList';
 import ApprovalConfig from './pages/ApprovalConfig';
 import ApprovalDetail from './pages/ApprovalDetail';
+import AttachmentList from './pages/AttachmentList';
 
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   const { isLoggedIn } = useAuth();
@@ -55,6 +56,7 @@ function App() {
               <Route path="approvals" element={<ApprovalList />} />
               <Route path="approvals/config" element={<ApprovalConfig />} />
               <Route path="approvals/:id" element={<ApprovalDetail />} />
+              <Route path="attachments" element={<AttachmentList />} />
             </Route>
           </Routes>
         </Router>
