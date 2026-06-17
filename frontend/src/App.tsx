@@ -17,6 +17,7 @@ import InspectionCheckin from './pages/InspectionCheckin';
 import InspectionExceptionReport from './pages/InspectionExceptionReport';
 import NotificationCenter from './components/NotificationCenter';
 import KnowledgeBase from './pages/KnowledgeBase';
+import DepartmentPerformance from './pages/DepartmentPerformance';
 
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   const { isLoggedIn } = useAuth();
@@ -47,6 +48,7 @@ function App() {
               <Route path="system/users" element={<UserManage />} />
               <Route path="system/roles" element={<RoleManage />} />
               <Route path="knowledge" element={<KnowledgeBase />} />
+              <Route path="performance" element={<DepartmentPerformance />} />
             </Route>
           </Routes>
         </Router>

@@ -14,6 +14,7 @@ import {
   ExclamationCircleOutlined,
   BellOutlined,
   BookOutlined,
+  TrophyOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useState } from 'react';
@@ -66,6 +67,11 @@ const MainLayout = () => {
       key: '/knowledge',
       icon: <BookOutlined />,
       label: '知识库',
+    },
+    {
+      key: '/performance',
+      icon: <TrophyOutlined />,
+      label: '绩效考核',
     },
     {
       key: 'system',

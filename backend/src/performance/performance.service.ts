@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Event, EventStatus } from '../schemas/event.schema';
 import { WorkOrder, WorkOrderStatus } from '../schemas/workorder.schema';
+import { WorkOrderLog, WorkOrderLogDocument } from '../schemas/workorder-log.schema';
 import { InspectionTask, InspectionTaskStatus } from '../schemas/inspection.schema';
 import { User } from '../schemas/user.schema';
 
@@ -11,6 +12,7 @@ export class PerformanceService {
   constructor(
     @InjectModel(Event.name) private eventModel: Model<any>,
     @InjectModel(WorkOrder.name) private workOrderModel: Model<any>,
+    @InjectModel(WorkOrderLog.name) private workOrderLogModel: Model<WorkOrderLogDocument>,
     @InjectModel(InspectionTask.name) private inspectionTaskModel: Model<any>,
     @InjectModel(User.name) private userModel: Model<any>,
   ) {}
@@ -22,6 +24,7 @@ export class PerformanceService {
   }
 
   private formatHours(hours: number): string {
+    if (!hours || hours <= 0) return '0分钟';
     if (hours < 1) {
       return `${Math.round(hours * 60)}分钟`;
     }
@@ -33,6 +36,29 @@ export class PerformanceService {
     return `${days}天${remainingHours.toFixed(0)}小时`;
   }
 
+  private async getFirstResponseTimeMap(workOrderIds: Types.ObjectId[]): Promise<Map<string, Date>> {
+    const result = await this.workOrderLogModel.aggregate([
+      {
+        $match: {
+          workOrderId: { $in: workOrderIds },
+          action: { $in: ['派单', '开始处理', '创建工单'] },
+        },
+      },
+      { $sort: { createdAt: 1 } },
+      {
+        $group: {
+          _id: '$workOrderId',
+          firstResponseTime: { $first: '$createdAt' },
+        },
+      },
+    ]);
+    const map = new Map<string, Date>();
+    result.forEach(item => {
+      map.set(item._id.toString(), item.firstResponseTime);
+    });
+    return map;
+  }
+
   async getDepartmentRanking(year: number, month: number) {
     const { startDate, endDate } = this.getMonthRange(year, month);
 
@@ -41,6 +67,38 @@ export class PerformanceService {
         $match: {
           createdAt: { $gte: startDate, $lte: endDate },
           department: { $exists: true, $ne: '' },
+        },
+      },
+      {
+        $lookup: {
+          from: 'workorderlogs',
+          localField: '_id',
+          foreignField: 'workOrderId',
+          as: 'logs',
+        },
+      },
+      {
+        $addFields: {
+          firstResponseLog: {
+            $filter: {
+              input: '$logs',
+              as: 'log',
+              cond: { $in: ['$$log.action', ['派单', '开始处理', '创建工单']] },
+            },
+          },
+        },
+      },
+      {
+        $addFields: {
+          firstResponseTime: {
+            $min: {
+              $map: {
+                input: '$firstResponseLog',
+                as: 'log',
+                in: '$$log.createdAt',
+              },
+            },
+          },
         },
       },
       {
@@ -105,48 +163,18 @@ export class PerformanceService {
               ],
             },
           },
-        },
-      },
-    ]);
-
-    const eventStats = await this.eventModel.aggregate([
-      {
-        $match: {
-          createdAt: { $gte: startDate, $lte: endDate },
-          handlerName: { $exists: true, $ne: '' },
-        },
-      },
-      {
-        $lookup: {
-          from: 'users',
-          localField: 'handlerId',
-          foreignField: '_id',
-          as: 'handler',
-        },
-      },
-      {
-        $unwind: { path: '$handler', preserveNullAndEmptyArrays: true },
-      },
-      {
-        $group: {
-          _id: '$handler.department',
-          totalEvents: { $sum: 1 },
-          resolvedEvents: {
+          respondedCount: {
             $sum: {
-              $cond: [
-                { $in: ['$status', ['resolved', 'closed']] },
-                1,
-                0,
-              ],
+              $cond: [{ $ifNull: ['$firstResponseTime', false] }, 1, 0],
             },
           },
           totalResponseDuration: {
             $sum: {
               $cond: [
-                { $ifNull: ['$updatedAt', false] },
+                { $ifNull: ['$firstResponseTime', false] },
                 {
                   $divide: [
-                    { $subtract: ['$updatedAt', '$createdAt'] },
+                    { $subtract: ['$firstResponseTime', '$createdAt'] },
                     1000 * 60 * 60,
                   ],
                 },
@@ -203,8 +231,7 @@ export class PerformanceService {
     ]);
 
     const departments = new Set<string>();
-    workOrderStats.forEach(s => departments.add(s._id));
-    eventStats.forEach(s => s._id && departments.add(s._id));
+    workOrderStats.forEach(s => s._id && departments.add(s._id));
     inspectionStats.forEach(s => s._id && departments.add(s._id));
 
     const rankings = Array.from(departments).map(department => {
@@ -215,11 +242,7 @@ export class PerformanceService {
         onTimeCompleted: 0,
         totalHandleDuration: 0,
         totalVerifyDuration: 0,
-      };
-
-      const evStat = eventStats.find(s => s._id === department) || {
-        totalEvents: 0,
-        resolvedEvents: 0,
+        respondedCount: 0,
         totalResponseDuration: 0,
       };
 
@@ -250,18 +273,18 @@ export class PerformanceService {
           : 0;
 
       const verifyPassRate =
-        woStat.verifiedWorkOrders > 0 && woStat.completedWorkOrders > 0
+        woStat.totalWorkOrders > 0
           ? Math.round((woStat.verifiedWorkOrders / woStat.totalWorkOrders) * 100)
           : 0;
 
-      const eventResolveRate =
-        evStat.totalEvents > 0
-          ? Math.round((evStat.resolvedEvents / evStat.totalEvents) * 100)
+      const eventResponseRate =
+        woStat.totalWorkOrders > 0
+          ? Math.round((woStat.respondedCount / woStat.totalWorkOrders) * 100)
           : 0;
 
       const avgResponseDuration =
-        evStat.resolvedEvents > 0
-          ? evStat.totalResponseDuration / evStat.resolvedEvents
+        woStat.respondedCount > 0
+          ? woStat.totalResponseDuration / woStat.respondedCount
           : 0;
 
       const inspectionPassRate =
@@ -273,7 +296,7 @@ export class PerformanceService {
         workOrderCompletionRate * 0.3 +
         onTimeRate * 0.2 +
         verifyPassRate * 0.2 +
-        eventResolveRate * 0.15 +
+        eventResponseRate * 0.15 +
         inspectionPassRate * 0.15;
 
       return {
@@ -292,9 +315,9 @@ export class PerformanceService {
           avgVerifyDurationText: this.formatHours(avgVerifyDuration),
         },
         events: {
-          total: evStat.totalEvents,
-          resolved: evStat.resolvedEvents,
-          resolveRate: eventResolveRate,
+          total: woStat.totalWorkOrders,
+          responded: woStat.respondedCount,
+          responseRate: eventResponseRate,
           avgResponseDuration,
           avgResponseDurationText: this.formatHours(avgResponseDuration),
         },
@@ -332,7 +355,17 @@ export class PerformanceService {
       .populate('eventId')
       .sort({ createdAt: -1 });
 
-    return workOrders.map(wo => {
+    const workOrderIds = workOrders.map((wo: any) => wo._id);
+    const firstResponseMap = await this.getFirstResponseTimeMap(workOrderIds);
+
+    return workOrders.map((wo: any) => {
+      const firstResponseTime = firstResponseMap.get(wo._id.toString()) || null;
+
+      const responseDuration =
+        firstResponseTime && wo.createdAt
+          ? (firstResponseTime.getTime() - wo.createdAt.getTime()) / (1000 * 60 * 60)
+          : null;
+
       const handleDuration =
         wo.handleTime && wo.createdAt
           ? (wo.handleTime.getTime() - wo.createdAt.getTime()) / (1000 * 60 * 60)
@@ -358,8 +391,11 @@ export class PerformanceService {
         status: wo.status,
         createdAt: wo.createdAt,
         deadline: wo.deadline,
+        firstResponseTime,
         handleTime: wo.handleTime,
         verifyTime: wo.verifyTime,
+        responseDuration,
+        responseDurationText: responseDuration !== null ? this.formatHours(responseDuration) : null,
         handleDuration,
         handleDurationText: handleDuration !== null ? this.formatHours(handleDuration) : null,
         verifyDuration,
@@ -375,36 +411,45 @@ export class PerformanceService {
 
     const filter: any = {
       createdAt: { $gte: startDate, $lte: endDate },
-      handlerName: { $exists: true, $ne: '' },
     };
 
-    let events = await this.eventModel.find(filter).sort({ createdAt: -1 });
+    const workOrders = await this.workOrderModel
+      .find({
+        createdAt: { $gte: startDate, $lte: endDate },
+        ...(department ? { department } : {}),
+      })
+      .populate('eventId')
+      .sort({ createdAt: -1 });
 
-    if (department) {
-      const users = await this.userModel.find({ department });
-      const userIds = users.map(u => u._id.toString());
-      events = events.filter(e => userIds.includes(e.handlerId?.toString()));
-    }
+    const workOrderIds = workOrders.map((wo: any) => wo._id);
+    const firstResponseMap = await this.getFirstResponseTimeMap(workOrderIds);
 
-    return events.map(event => {
+    return workOrders.map((wo: any) => {
+      const event = wo.eventId || {};
+      const firstResponseTime = firstResponseMap.get(wo._id.toString()) || null;
+
       const responseDuration =
-        event.updatedAt && event.createdAt
-          ? (event.updatedAt.getTime() - event.createdAt.getTime()) / (1000 * 60 * 60)
+        firstResponseTime && wo.createdAt
+          ? (firstResponseTime.getTime() - wo.createdAt.getTime()) / (1000 * 60 * 60)
           : null;
 
       return {
-        id: event._id,
-        title: event.title,
+        id: event._id || wo._id,
+        workOrderId: wo._id,
+        orderNo: wo.orderNo,
+        title: event.title || wo.title,
         category: event.category,
-        priority: event.priority,
-        status: event.status,
+        priority: event.priority || wo.priority,
+        status: wo.status,
         reporterName: event.reporterName,
-        handlerName: event.handlerName,
-        createdAt: event.createdAt,
-        updatedAt: event.updatedAt,
+        handlerName: wo.handlerName,
+        department: wo.department,
+        createdAt: wo.createdAt,
+        firstResponseTime,
+        handleTime: wo.handleTime,
         responseDuration,
         responseDurationText: responseDuration !== null ? this.formatHours(responseDuration) : null,
-        isResolved: event.status === 'resolved' || event.status === 'closed',
+        isResolved: ['completed', 'verified', 'closed'].includes(wo.status),
       };
     });
   }
@@ -425,7 +470,7 @@ export class PerformanceService {
       tasks = tasks.filter(t => userIds.includes(t.assigneeId?.toString()));
     }
 
-    return tasks.map(task => {
+    return tasks.map((task: any) => {
       const taskDuration =
         task.actualEndTime && task.actualStartTime
           ? (task.actualEndTime.getTime() - task.actualStartTime.getTime()) / (1000 * 60 * 60)
@@ -472,14 +517,18 @@ export class PerformanceService {
       status: 'verified',
     });
 
-    const totalEvents = await this.eventModel.countDocuments({
-      createdAt: { $gte: startDate, $lte: endDate },
-    });
+    const respondedOrders = await this.workOrderLogModel.aggregate([
+      {
+        $match: {
+          action: { $in: ['派单', '开始处理', '创建工单'] },
+          createdAt: { $gte: startDate, $lte: endDate },
+        },
+      },
+      { $group: { _id: '$workOrderId' } },
+      { $count: 'count' },
+    ]);
 
-    const resolvedEvents = await this.eventModel.countDocuments({
-      createdAt: { $gte: startDate, $lte: endDate },
-      status: { $in: ['resolved', 'closed'] },
-    });
+    const respondedCount = respondedOrders[0]?.count || 0;
 
     const totalInspections = await this.inspectionTaskModel.countDocuments({
       scheduledDate: { $gte: startDate, $lte: endDate },
@@ -500,8 +549,10 @@ export class PerformanceService {
         ? Math.round((verifiedWorkOrders / totalWorkOrders) * 100)
         : 0;
 
-    const eventResolveRate =
-      totalEvents > 0 ? Math.round((resolvedEvents / totalEvents) * 100) : 0;
+    const eventResponseRate =
+      totalWorkOrders > 0
+        ? Math.round((respondedCount / totalWorkOrders) * 100)
+        : 0;
 
     const inspectionPassRate =
       totalInspections > 0
@@ -519,9 +570,9 @@ export class PerformanceService {
         verifyPassRate,
       },
       events: {
-        total: totalEvents,
-        resolved: resolvedEvents,
-        resolveRate: eventResolveRate,
+        total: totalWorkOrders,
+        responded: respondedCount,
+        responseRate: eventResponseRate,
       },
       inspections: {
         total: totalInspections,
