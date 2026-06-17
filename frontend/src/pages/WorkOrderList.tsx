@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { getWorkOrders, createWorkOrder, assignWorkOrder } from '../api/workorder';
 import { getUsersByRole } from '../api/user';
 import { getEvents } from '../api/event';
+import { useAuth } from '../context/AuthContext';
 import dayjs from 'dayjs';
 
 const { Option } = Select;
@@ -23,8 +24,7 @@ const WorkOrderList = () => {
   const [form] = Form.useForm();
   const [assignForm] = Form.useForm();
   const navigate = useNavigate();
-
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const { user } = useAuth();
 
   useEffect(() => {
     loadData();

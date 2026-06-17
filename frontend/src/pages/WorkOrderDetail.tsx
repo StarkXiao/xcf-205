@@ -35,6 +35,7 @@ import {
   assignWorkOrder,
 } from '../api/workorder';
 import { getUsersByRole } from '../api/user';
+import { useAuth } from '../context/AuthContext';
 import dayjs from 'dayjs';
 
 const { Option } = Select;
@@ -50,8 +51,7 @@ const WorkOrderDetail = () => {
   const [actionModal, setActionModal] = useState<{ type: string; visible: boolean }>({ type: '', visible: false });
   const [form] = Form.useForm();
   const [handlers, setHandlers] = useState<any[]>([]);
-
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const { user } = useAuth();
 
   useEffect(() => {
     if (id) {

@@ -13,6 +13,7 @@ import {
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useState } from 'react';
+import { useAuth } from '../context/AuthContext';
 
 const { Header, Sider, Content } = Layout;
 
@@ -20,8 +21,7 @@ const MainLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
-
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const { user, logout } = useAuth();
 
   const menuItems = [
     {
@@ -56,9 +56,8 @@ const MainLayout = () => {
   ];
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    navigate('/login');
+    logout();
+    navigate('/login', { replace: true });
   };
 
   const userMenuItems = [

@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Table, Button, Tag, Select, Input, Space, Card, Modal, Descriptions, Badge, message } from 'antd';
-import { PlusOutlined, SearchOutlined, EyeOutlined } from '@ant-design/icons';
+import { Table, Button, Tag, Select, Input, Space, Card, Modal, Descriptions, Badge, message, Form } from 'antd';
+import { PlusOutlined, SearchOutlined, EyeOutlined, FileTextOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { getEvents, deleteEvent, updateEventStatus } from '../api/event';
-import { getWorkOrders, createWorkOrder } from '../api/workorder';
+import { createWorkOrder, assignWorkOrder } from '../api/workorder';
+import { getUsersByRole } from '../api/user';
+import { useAuth } from '../context/AuthContext';
 import dayjs from 'dayjs';
 
 const { Option } = Select;
@@ -15,14 +17,16 @@ const EventList = () => {
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10 });
   const [filters, setFilters] = useState<any>({});
   const [detailModal, setDetailModal] = useState(false);
-  const [currentEvent, setCurrentEvent] = useState<any>(null);
   const [dispatchModal, setDispatchModal] = useState(false);
+  const [currentEvent, setCurrentEvent] = useState<any>(null);
+  const [handlers, setHandlers] = useState<any[]>([]);
+  const [dispatchForm] = Form.useForm();
   const navigate = useNavigate();
-
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const { user } = useAuth();
 
   useEffect(() => {
     loadData();
+    loadHandlers();
   }, [pagination.current, pagination.pageSize, filters]);
 
   const loadData = async () => {
@@ -39,6 +43,15 @@ const EventList = () => {
       console.error('加载事件列表失败:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadHandlers = async () => {
+    try {
+      const data: any = await getUsersByRole('handler');
+      setHandlers(data);
+    } catch (error) {
+      console.error('加载处理人员失败:', error);
     }
   };
 
@@ -84,20 +97,38 @@ const EventList = () => {
     setDetailModal(true);
   };
 
-  const handleDispatch = async (record: any) => {
+  const handleOpenDispatch = (record: any) => {
+    setCurrentEvent(record);
+    dispatchForm.resetFields();
+    setDispatchModal(true);
+  };
+
+  const handleDispatch = async () => {
     try {
-      const result: any = await createWorkOrder({
-        eventId: record._id,
-        title: record.title,
-        description: record.description,
-        priority: record.priority,
-        assignerId: user._id,
-        assignerName: user.realName,
+      const values = await dispatchForm.validateFields();
+      const handler = handlers.find(h => h._id === values.handlerId);
+      
+      const workOrderResult: any = await createWorkOrder({
+        eventId: currentEvent._id,
+        title: currentEvent.title,
+        description: currentEvent.description,
+        priority: currentEvent.priority,
+        assignerId: user?._id,
+        assignerName: user?.realName,
       });
-      message.success('工单创建成功');
+
+      await assignWorkOrder(workOrderResult._id, {
+        handlerId: values.handlerId,
+        handlerName: handler?.realName,
+        department: handler?.department,
+        assignerId: user?._id,
+        assignerName: user?.realName,
+      });
+
+      message.success('工单创建并派单成功');
       setDispatchModal(false);
       loadData();
-      navigate(`/workorders/${result._id}`);
+      navigate(`/workorders/${workOrderResult._id}`);
     } catch (error: any) {
       message.error(error.response?.data?.message || '创建工单失败');
     }
@@ -154,14 +185,14 @@ const EventList = () => {
     {
       title: '操作',
       key: 'action',
-      width: 180,
+      width: 200,
       render: (_: any, record: any) => (
         <Space>
           <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleViewDetail(record)}>
             详情
           </Button>
           {record.status === 'pending' && (
-            <Button type="link" size="small" onClick={() => handleDispatch(record)}>
+            <Button type="link" size="small" icon={<FileTextOutlined />} onClick={() => handleOpenDispatch(record)}>
               派单
             </Button>
           )}
@@ -265,6 +296,37 @@ const EventList = () => {
             <Descriptions.Item label="详细描述" span={2}>{currentEvent.description}</Descriptions.Item>
           </Descriptions>
         )}
+      </Modal>
+
+      <Modal
+        title="创建工单并派单"
+        open={dispatchModal}
+        onCancel={() => setDispatchModal(false)}
+        onOk={handleDispatch}
+        okText="确认派单"
+        cancelText="取消"
+        width={500}
+      >
+        <Form form={dispatchForm} layout="vertical">
+          <Descriptions column={1} size="small" style={{ marginBottom: 16 }}>
+            <Descriptions.Item label="事件标题">{currentEvent?.title}</Descriptions.Item>
+            <Descriptions.Item label="事件分类">{currentEvent && getCategoryName(currentEvent.category)}</Descriptions.Item>
+            <Descriptions.Item label="优先级">{currentEvent && getPriorityTag(currentEvent.priority)}</Descriptions.Item>
+          </Descriptions>
+          <Form.Item
+            label="选择处理人"
+            name="handlerId"
+            rules={[{ required: true, message: '请选择处理人' }]}
+          >
+            <Select placeholder="请选择处理人员">
+              {handlers.map(h => (
+                <Option key={h._id} value={h._id}>
+                  {h.realName} - {h.department}
+                </Option>
+              ))}
+            </Select>
+          </Form.Item>
+        </Form>
       </Modal>
     </div>
   );

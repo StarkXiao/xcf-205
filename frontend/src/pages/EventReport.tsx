@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { Form, Input, Select, Button, Card, message, Row, Col, InputNumber, Upload } from 'antd';
+import { useState, useEffect } from 'react';
+import { Form, Input, Select, Button, Card, message, Row, Col, Upload } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { createEvent } from '../api/event';
+import { useAuth } from '../context/AuthContext';
 
 const { TextArea } = Input;
 const { Option } = Select;
@@ -11,6 +12,16 @@ const EventReport = () => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { user, isLoggedIn } = useAuth();
+
+  useEffect(() => {
+    if (isLoggedIn && user) {
+      form.setFieldsValue({
+        reporterName: user.realName,
+        reporterPhone: user.phone,
+      });
+    }
+  }, [isLoggedIn, user, form]);
 
   const categoryOptions = [
     { value: 'road', label: '道路设施' },
@@ -38,11 +49,16 @@ const EventReport = () => {
         ...values,
         lng: 121.4737 + Math.random() * 0.1 - 0.05,
         lat: 31.2304 + Math.random() * 0.1 - 0.05,
-        source: '市民上报',
+        source: isLoggedIn ? '工作人员上报' : '市民上报',
+        reporterId: user?._id,
       };
       await createEvent(data);
-      message.success('事件上报成功');
-      form.resetFields();
+      message.success(isLoggedIn ? '事件上报成功，可前往事件列表派单' : '事件上报成功，感谢您的反馈！');
+      if (isLoggedIn) {
+        navigate('/events/list');
+      } else {
+        form.resetFields();
+      }
     } catch (error: any) {
       message.error(error.response?.data?.message || '上报失败');
     } finally {

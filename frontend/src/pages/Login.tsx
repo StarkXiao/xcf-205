@@ -1,19 +1,20 @@
-import { Form, Input, Button, Card, message } from 'antd';
+import { Form, Input, Button, message } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { login } from '../api/auth';
+import { useAuth } from '../context/AuthContext';
 
 const Login = () => {
   const navigate = useNavigate();
+  const { login: setAuthLogin } = useAuth();
   const [form] = Form.useForm();
 
   const handleLogin = async (values: any) => {
     try {
       const result: any = await login(values.username, values.password);
-      localStorage.setItem('token', result.token);
-      localStorage.setItem('user', JSON.stringify(result.user));
+      setAuthLogin(result.token, result.user);
       message.success('登录成功');
-      navigate('/dashboard');
+      navigate('/dashboard', { replace: true });
     } catch (error: any) {
       message.error(error.response?.data?.message || '登录失败');
     }
