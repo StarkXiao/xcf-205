@@ -1,15 +1,63 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { Knowledge, KnowledgeDocument, KnowledgeType } from '../schemas/knowledge.schema';
+import { Model, Types, FilterQuery } from 'mongoose';
+import { Knowledge, KnowledgeDocument } from '../schemas/knowledge.schema';
 
 @Injectable()
 export class KnowledgeService {
-  constructor(@InjectModel(Knowledge.name) private knowledgeModel: Model<KnowledgeDocument>) {}
+  constructor(
+    @InjectModel(Knowledge.name)
+    private knowledgeModel: Model<KnowledgeDocument>,
+  ) {}
+
+  private buildVisibleRoleFilter(roleId?: string): FilterQuery<KnowledgeDocument> {
+    if (!roleId) {
+      return {};
+    }
+    return {
+      $or: [
+        { visibleRoles: { $size: 0 } },
+        { visibleRoles: { $in: [new Types.ObjectId(roleId)] } },
+      ],
+    };
+  }
+
+  private checkVisiblePermission(
+    knowledge: KnowledgeDocument,
+    roleId?: string,
+  ) {
+    if (!roleId) {
+      return;
+    }
+    const visibleRoles = knowledge.visibleRoles || [];
+    if (visibleRoles.length === 0) {
+      return;
+    }
+    const hasPermission = visibleRoles.some((r) => {
+      const idStr = r instanceof Types.ObjectId ? r.toString() : String(r);
+      return idStr === String(roleId);
+    });
+    if (!hasPermission) {
+      throw new ForbiddenException('您无权限访问该知识条目');
+    }
+  }
 
   async findAll(query: any = {}) {
-    const { type, eventCategory, tag, keyword, roleId, page = 1, pageSize = 10 } = query;
-    const filter: any = { isActive: true };
+    const {
+      type,
+      eventCategory,
+      tag,
+      keyword,
+      roleId,
+      page = 1,
+      pageSize = 10,
+    } = query;
+    const filter: FilterQuery<KnowledgeDocument> = { isActive: true };
+    const andConditions: FilterQuery<KnowledgeDocument>[] = [];
 
     if (type) {
       filter.type = type;
@@ -21,16 +69,21 @@ export class KnowledgeService {
       filter.tags = { $in: [tag] };
     }
     if (keyword) {
-      filter.$or = [
-        { title: { $regex: keyword, $options: 'i' } },
-        { content: { $regex: keyword, $options: 'i' } },
-      ];
+      andConditions.push({
+        $or: [
+          { title: { $regex: keyword, $options: 'i' } },
+          { content: { $regex: keyword, $options: 'i' } },
+        ],
+      });
     }
-    if (roleId) {
-      filter.$or = [
-        { visibleRoles: { $size: 0 } },
-        { visibleRoles: { $in: [new Types.ObjectId(roleId)] } },
-      ];
+
+    const roleFilter = this.buildVisibleRoleFilter(roleId);
+    if (Object.keys(roleFilter).length > 0) {
+      andConditions.push(roleFilter);
+    }
+
+    if (andConditions.length > 0) {
+      filter.$and = andConditions;
     }
 
     const skip = (page - 1) * pageSize;
@@ -48,7 +101,7 @@ export class KnowledgeService {
     return { list, total, page: Number(page), pageSize: Number(pageSize) };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, roleId?: string) {
     const knowledge = await this.knowledgeModel
       .findById(id)
       .populate('visibleRoles', 'name code')
@@ -56,6 +109,7 @@ export class KnowledgeService {
     if (!knowledge) {
       throw new NotFoundException('知识库条目不存在');
     }
+    this.checkVisiblePermission(knowledge, roleId);
     return knowledge;
   }
 
@@ -65,7 +119,11 @@ export class KnowledgeService {
   }
 
   async update(id: string, data: any) {
-    const knowledge = await this.knowledgeModel.findByIdAndUpdate(id, data, { new: true });
+    const knowledge = await this.knowledgeModel.findByIdAndUpdate(
+      id,
+      data,
+      { new: true },
+    );
     if (!knowledge) {
       throw new NotFoundException('知识库条目不存在');
     }
@@ -80,48 +138,62 @@ export class KnowledgeService {
     return { message: '删除成功' };
   }
 
-  async incrementReference(id: string) {
-    const knowledge = await this.knowledgeModel.findByIdAndUpdate(
-      id,
-      { $inc: { referenceCount: 1 } },
-      { new: true },
-    );
+  async incrementReference(id: string, roleId?: string) {
+    const knowledge = await this.knowledgeModel.findById(id);
     if (!knowledge) {
       throw new NotFoundException('知识库条目不存在');
     }
+    this.checkVisiblePermission(knowledge, roleId);
+    knowledge.referenceCount += 1;
+    await knowledge.save();
+    await this.knowledgeModel.populate(knowledge, [
+      { path: 'visibleRoles', select: 'name code' },
+      { path: 'createdBy', select: 'realName username' },
+    ]);
     return knowledge;
   }
 
   async findByEventCategory(category: string, roleId?: string) {
-    const filter: any = {
-      isActive: true,
-      eventCategory: category,
-    };
-    if (roleId) {
-      filter.$or = [
-        { visibleRoles: { $size: 0 } },
-        { visibleRoles: { $in: [new Types.ObjectId(roleId)] } },
-      ];
+    const andConditions: FilterQuery<KnowledgeDocument>[] = [
+      { isActive: true, eventCategory: category },
+    ];
+    const roleFilter = this.buildVisibleRoleFilter(roleId);
+    if (Object.keys(roleFilter).length > 0) {
+      andConditions.push(roleFilter);
     }
     return this.knowledgeModel
-      .find(filter)
+      .find({ $and: andConditions })
       .populate('visibleRoles', 'name code')
       .sort({ createdAt: -1 });
   }
 
-  async getStats() {
-    const total = await this.knowledgeModel.countDocuments({ isActive: true });
+  async getStats(roleId?: string) {
+    const andConditions: FilterQuery<KnowledgeDocument>[] = [
+      { isActive: true },
+    ];
+    const roleFilter = this.buildVisibleRoleFilter(roleId);
+    if (Object.keys(roleFilter).length > 0) {
+      andConditions.push(roleFilter);
+    }
+    const match = { $match: { $and: andConditions } } as any;
+
+    const total = await this.knowledgeModel.countDocuments({
+      $and: andConditions,
+    });
     const byType = await this.knowledgeModel.aggregate([
-      { $match: { isActive: true } },
+      match,
       { $group: { _id: '$type', count: { $sum: 1 } } },
     ]);
     const totalReferences = await this.knowledgeModel.aggregate([
-      { $match: { isActive: true } },
+      match,
       { $group: { _id: null, total: { $sum: '$referenceCount' } } },
     ]);
     return {
       total,
-      byType: byType.reduce((acc, item) => ({ ...acc, [item._id]: item.count }), {}),
+      byType: byType.reduce(
+        (acc, item) => ({ ...acc, [item._id]: item.count }),
+        {},
+      ),
       totalReferences: totalReferences[0]?.total || 0,
     };
   }

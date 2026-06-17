@@ -18,17 +18,26 @@ import { AuthGuard } from '@nestjs/passport';
 export class KnowledgeController {
   constructor(private readonly knowledgeService: KnowledgeService) {}
 
+  private extractRoleId(req: any): string | undefined {
+    const roleId = req.user?.roleId;
+    if (!roleId) return undefined;
+    if (typeof roleId === 'object' && roleId._id) {
+      return String(roleId._id);
+    }
+    return String(roleId);
+  }
+
   @Get()
   async findAll(@Query() query: any, @Req() req: any) {
     return this.knowledgeService.findAll({
       ...query,
-      roleId: req.user?.roleId?._id || req.user?.roleId,
+      roleId: this.extractRoleId(req),
     });
   }
 
   @Get('stats')
-  async getStats() {
-    return this.knowledgeService.getStats();
+  async getStats(@Req() req: any) {
+    return this.knowledgeService.getStats(this.extractRoleId(req));
   }
 
   @Get('category/:category')
@@ -38,13 +47,13 @@ export class KnowledgeController {
   ) {
     return this.knowledgeService.findByEventCategory(
       category,
-      req.user?.roleId?._id || req.user?.roleId,
+      this.extractRoleId(req),
     );
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string) {
-    return this.knowledgeService.findOne(id);
+  async findOne(@Param('id') id: string, @Req() req: any) {
+    return this.knowledgeService.findOne(id, this.extractRoleId(req));
   }
 
   @Post()
@@ -66,7 +75,10 @@ export class KnowledgeController {
   }
 
   @Put(':id/reference')
-  async incrementReference(@Param('id') id: string) {
-    return this.knowledgeService.incrementReference(id);
+  async incrementReference(@Param('id') id: string, @Req() req: any) {
+    return this.knowledgeService.incrementReference(
+      id,
+      this.extractRoleId(req),
+    );
   }
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Table,
   Button,
@@ -19,6 +19,7 @@ import {
   Divider,
   Typography,
   Switch,
+  Alert,
 } from 'antd';
 import {
   PlusOutlined,
@@ -31,6 +32,7 @@ import {
   CheckCircleOutlined,
   ApiOutlined,
   CopyOutlined,
+  WarningOutlined,
 } from '@ant-design/icons';
 import {
   getKnowledgeList,
@@ -42,6 +44,7 @@ import {
   referenceKnowledge,
 } from '../api/knowledge';
 import { getRoles } from '../api/role';
+import { useAuth } from '../context/AuthContext';
 import dayjs from 'dayjs';
 
 const { Option } = Select;
@@ -64,7 +67,10 @@ const EventCategories = [
   '其他',
 ];
 
+const ADMIN_ROLE_CODES = ['admin'];
+
 const KnowledgeBase = () => {
+  const { user } = useAuth();
   const [data, setData] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -82,9 +88,48 @@ const KnowledgeBase = () => {
   const [detailVisible, setDetailVisible] = useState(false);
   const [detailData, setDetailData] = useState<any>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailForbidden, setDetailForbidden] = useState(false);
 
   const [roles, setRoles] = useState<any[]>([]);
   const [stats, setStats] = useState<any>({ total: 0, byType: {}, totalReferences: 0 });
+
+  const userRoleCode = useMemo(() => {
+    if (!user || !user.roleId) return '';
+    return typeof user.roleId === 'object' ? user.roleId.code : user.roleId;
+  }, [user]);
+
+  const userRoleId = useMemo(() => {
+    if (!user || !user.roleId) return '';
+    return typeof user.roleId === 'object' ? user.roleId._id : user.roleId;
+  }, [user]);
+
+  const canManage = useMemo(() => {
+    if (!user || !user.roleId) return false;
+    const role = user.roleId;
+    const roleCode = typeof role === 'object' ? role.code : role;
+    const permissions = typeof role === 'object' ? role.permissions : [];
+    if (ADMIN_ROLE_CODES.includes(roleCode)) return true;
+    if (Array.isArray(permissions) && permissions.includes('*')) return true;
+    if (
+      Array.isArray(permissions) &&
+      (permissions.includes('knowledge:create') ||
+        permissions.includes('knowledge:update') ||
+        permissions.includes('knowledge:delete'))
+    ) {
+      return true;
+    }
+    return false;
+  }, [user]);
+
+  const canViewReference = (record: any) => {
+    if (!record) return false;
+    const visibleRoles = record.visibleRoles || [];
+    if (visibleRoles.length === 0) return true;
+    return visibleRoles.some((r: any) => {
+      const id = typeof r === 'object' ? r._id : r;
+      return String(id) === String(userRoleId);
+    });
+  };
 
   useEffect(() => {
     loadRoles();
@@ -129,15 +174,23 @@ const KnowledgeBase = () => {
       const data: any = await getKnowledgeList(params);
       setData(data.list);
       setTotal(data.total);
-    } catch (error) {
+    } catch (error: any) {
       console.error('加载知识库列表失败:', error);
-      message.error('加载知识库列表失败');
+      if (error.response?.status === 403) {
+        message.error('您无权限访问知识库');
+      } else {
+        message.error('加载知识库列表失败');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   const handleCreate = () => {
+    if (!canManage) {
+      message.warning('您无权限新增知识条目');
+      return;
+    }
     setModalType('create');
     setCurrentItem(null);
     form.resetFields();
@@ -151,6 +204,10 @@ const KnowledgeBase = () => {
   };
 
   const handleEdit = (record: any) => {
+    if (!canManage) {
+      message.warning('您无权限编辑知识条目');
+      return;
+    }
     setModalType('edit');
     setCurrentItem(record);
     form.setFieldsValue({
@@ -162,17 +219,29 @@ const KnowledgeBase = () => {
   };
 
   const handleDelete = async (id: string) => {
+    if (!canManage) {
+      message.warning('您无权限删除知识条目');
+      return;
+    }
     try {
       await deleteKnowledge(id);
       message.success('删除成功');
       loadData();
       loadStats();
     } catch (error: any) {
-      message.error(error.response?.data?.message || '删除失败');
+      if (error.response?.status === 403) {
+        message.error('您无权限执行此操作');
+      } else {
+        message.error(error.response?.data?.message || '删除失败');
+      }
     }
   };
 
   const handleSubmit = async () => {
+    if (!canManage) {
+      message.warning('您无权限执行此操作');
+      return;
+    }
     try {
       const values = await form.validateFields();
 
@@ -188,38 +257,67 @@ const KnowledgeBase = () => {
       loadData();
       loadStats();
     } catch (error: any) {
-      message.error(error.response?.data?.message || '操作失败');
+      if (error.response?.status === 403) {
+        message.error('您无权限执行此操作');
+      } else {
+        message.error(error.response?.data?.message || '操作失败');
+      }
     }
   };
 
   const handleViewDetail = async (id: string) => {
     setDetailVisible(true);
     setDetailLoading(true);
+    setDetailForbidden(false);
     try {
       const data: any = await getKnowledge(id);
       setDetailData(data);
-    } catch (error) {
+    } catch (error: any) {
       console.error('加载详情失败:', error);
-      message.error('加载详情失败');
+      if (error.response?.status === 403) {
+        setDetailForbidden(true);
+        setDetailData(null);
+        message.error('您无权限查看该知识条目详情');
+      } else {
+        message.error('加载详情失败');
+      }
     } finally {
       setDetailLoading(false);
     }
   };
 
   const handleReference = async (record: any) => {
+    if (!canViewReference(record)) {
+      message.warning('您无权限引用该知识条目');
+      return;
+    }
     try {
       await referenceKnowledge(record._id);
       message.success('已引用');
       loadData();
       loadStats();
     } catch (error: any) {
-      message.error(error.response?.data?.message || '引用失败');
+      if (error.response?.status === 403) {
+        message.error('您无权限引用该知识条目');
+      } else {
+        message.error(error.response?.data?.message || '引用失败');
+      }
     }
   };
 
   const handleCopyContent = (content: string) => {
     navigator.clipboard.writeText(content);
     message.success('已复制到剪贴板');
+  };
+
+  const handleDetailReference = () => {
+    if (!detailData) return;
+    if (!canViewReference(detailData)) {
+      message.warning('您无权限引用该知识条目');
+      return;
+    }
+    handleCopyContent(detailData.content);
+    handleReference(detailData);
   };
 
   const columns = [
@@ -280,11 +378,17 @@ const KnowledgeBase = () => {
       key: 'visibleRoles',
       width: 180,
       render: (roles: any[]) => {
-        if (!roles || roles.length === 0) return '全部角色';
-        return roles
-          .map((r: any) => r.name || r)
-          .slice(0, 2)
-          .join('、') + (roles.length > 2 ? ' 等' : '');
+        if (!roles || roles.length === 0)
+          return <Tag color="purple">全部角色可见</Tag>;
+        return (
+          <span>
+            {roles
+              .map((r: any) => r.name || r)
+              .slice(0, 2)
+              .join('、')}
+            {roles.length > 2 ? ` 等${roles.length}个` : ''}
+          </span>
+        );
       },
     },
     {
@@ -323,45 +427,53 @@ const KnowledgeBase = () => {
     {
       title: '操作',
       key: 'action',
-      width: 220,
+      width: 280,
       fixed: 'right' as const,
-      render: (_: any, record: any) => (
-        <Space size="small">
-          <Button
-            type="link"
-            size="small"
-            icon={<EyeOutlined />}
-            onClick={() => handleViewDetail(record._id)}
-          >
-            查看
-          </Button>
-          <Button
-            type="link"
-            size="small"
-            icon={<CopyOutlined />}
-            onClick={() => handleReference(record)}
-          >
-            引用
-          </Button>
-          <Button
-            type="link"
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
-          >
-            编辑
-          </Button>
-          <Button
-            type="link"
-            size="small"
-            danger
-            icon={<DeleteOutlined />}
-            onClick={() => handleDelete(record._id)}
-          >
-            删除
-          </Button>
-        </Space>
-      ),
+      render: (_: any, record: any) => {
+        const canRef = canViewReference(record);
+        return (
+          <Space size="small">
+            <Button
+              type="link"
+              size="small"
+              icon={<EyeOutlined />}
+              onClick={() => handleViewDetail(record._id)}
+            >
+              查看
+            </Button>
+            <Button
+              type="link"
+              size="small"
+              icon={<CopyOutlined />}
+              disabled={!canRef}
+              onClick={() => handleReference(record)}
+            >
+              引用
+            </Button>
+            {canManage && (
+              <>
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<EditOutlined />}
+                  onClick={() => handleEdit(record)}
+                >
+                  编辑
+                </Button>
+                <Button
+                  type="link"
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                  onClick={() => handleDelete(record._id)}
+                >
+                  删除
+                </Button>
+              </>
+            )}
+          </Space>
+        );
+      },
     },
   ];
 
@@ -390,17 +502,42 @@ const KnowledgeBase = () => {
   return (
     <div className="page-container">
       <div className="page-header">
-        <div className="page-title">知识库管理</div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>
-          新增条目
-        </Button>
+        <div>
+          <div className="page-title">知识库管理</div>
+          <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>
+            当前角色：
+            <Tag color="blue" style={{ marginLeft: 4, marginRight: 0 }}>
+              {typeof user?.roleId === 'object' ? user?.roleId?.name : user?.roleId || '未知'}
+            </Tag>
+            {!canManage && (
+              <Tag color="default" style={{ marginLeft: 4 }}>
+                <WarningOutlined /> 仅查看和引用权限
+              </Tag>
+            )}
+          </div>
+        </div>
+        {canManage ? (
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>
+            新增条目
+          </Button>
+        ) : null}
       </div>
+
+      {!canManage && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="角色权限说明"
+          description="当前角色仅可查看已授权范围内的知识条目并进行引用操作，如需新增、编辑或删除请联系管理员。"
+        />
+      )}
 
       <Row gutter={16} style={{ marginBottom: 16 }}>
         <Col span={6}>
           <Card>
             <Statistic
-              title="知识条目总数"
+              title="可见条目总数"
               value={stats.total}
               prefix={<BookOutlined style={{ color: '#1890ff' }} />}
             />
@@ -429,7 +566,7 @@ const KnowledgeBase = () => {
         <Col span={6}>
           <Card>
             <Statistic
-              title="总引用次数"
+              title="累计引用次数"
               value={stats.totalReferences}
               valueStyle={{ color: '#fa8c16' }}
               prefix={<ApiOutlined />}
@@ -442,7 +579,7 @@ const KnowledgeBase = () => {
         <Row gutter={16}>
           <Col span={8}>
             <Input
-              placeholder="搜索标题或内容"
+              placeholder="搜索标题或内容（按当前角色可见范围筛选）"
               prefix={<SearchOutlined />}
               value={keyword}
               onChange={(e) => setKeyword(e.target.value)}
@@ -480,14 +617,14 @@ const KnowledgeBase = () => {
           dataSource={data}
           rowKey="_id"
           loading={loading}
-          scroll={{ x: 1400 }}
+          scroll={{ x: 1500 }}
           pagination={{
             current: page,
             pageSize,
             total,
             showSizeChanger: true,
             showQuickJumper: true,
-            showTotal: (total) => `共 ${total} 条`,
+            showTotal: (total) => `共 ${total} 条（仅显示您有权限查看的条目）`,
             onChange: (p, ps) => {
               setPage(p);
               setPageSize(ps);
@@ -496,97 +633,100 @@ const KnowledgeBase = () => {
         />
       </Card>
 
-      <Modal
-        title={modalType === 'create' ? '新增知识条目' : '编辑知识条目'}
-        open={modalVisible}
-        onCancel={() => setModalVisible(false)}
-        onOk={handleSubmit}
-        width={800}
-        okText="提交"
-        cancelText="取消"
-      >
-        <Form form={form} layout="vertical">
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                label="条目类型"
-                name="type"
-                rules={[{ required: true, message: '请选择条目类型' }]}
-              >
-                <Select placeholder="请选择条目类型">
-                  {Object.entries(KnowledgeTypeMap).map(([key, info]) => (
-                    <Option key={key} value={key}>
-                      {info.label}
-                    </Option>
-                  ))}
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item label="关联事件分类" name="eventCategory">
-                <Select placeholder="请选择事件分类" allowClear>
-                  {EventCategories.map((cat) => (
-                    <Option key={cat} value={cat}>
-                      {cat}
-                    </Option>
-                  ))}
-                </Select>
-              </Form.Item>
-            </Col>
-          </Row>
+      {canManage && (
+        <Modal
+          title={modalType === 'create' ? '新增知识条目' : '编辑知识条目'}
+          open={modalVisible}
+          onCancel={() => setModalVisible(false)}
+          onOk={handleSubmit}
+          width={800}
+          okText="提交"
+          cancelText="取消"
+        >
+          <Form form={form} layout="vertical">
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item
+                  label="条目类型"
+                  name="type"
+                  rules={[{ required: true, message: '请选择条目类型' }]}
+                >
+                  <Select placeholder="请选择条目类型">
+                    {Object.entries(KnowledgeTypeMap).map(([key, info]) => (
+                      <Option key={key} value={key}>
+                        {info.label}
+                      </Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item label="关联事件分类" name="eventCategory">
+                  <Select placeholder="请选择事件分类" allowClear>
+                    {EventCategories.map((cat) => (
+                      <Option key={cat} value={cat}>
+                        {cat}
+                      </Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+              </Col>
+            </Row>
 
-          <Form.Item
-            label="标题"
-            name="title"
-            rules={[{ required: true, message: '请输入标题' }]}
-          >
-            <Input placeholder="请输入知识条目标题" maxLength={200} />
-          </Form.Item>
+            <Form.Item
+              label="标题"
+              name="title"
+              rules={[{ required: true, message: '请输入标题' }]}
+            >
+              <Input placeholder="请输入知识条目标题" maxLength={200} />
+            </Form.Item>
 
-          <Form.Item
-            label="内容"
-            name="content"
-            rules={[{ required: true, message: '请输入内容' }]}
-          >
-            <Input.TextArea
-              rows={8}
-              placeholder="请输入知识条目内容，支持详细描述"
-              maxLength={5000}
-              showCount
-            />
-          </Form.Item>
+            <Form.Item
+              label="内容"
+              name="content"
+              rules={[{ required: true, message: '请输入内容' }]}
+            >
+              <Input.TextArea
+                rows={8}
+                placeholder="请输入知识条目内容，支持详细描述"
+                maxLength={5000}
+                showCount
+              />
+            </Form.Item>
 
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item label="标签" name="tags">
-                <Select mode="tags" placeholder="输入标签后回车" style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item label="版本号" name="version">
-                <Input placeholder="例如: 1.0" defaultValue="1.0" />
-              </Form.Item>
-            </Col>
-          </Row>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item label="标签" name="tags">
+                  <Select mode="tags" placeholder="输入标签后回车" style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item label="版本号" name="version">
+                  <Input placeholder="例如: 1.0" defaultValue="1.0" />
+                </Form.Item>
+              </Col>
+            </Row>
 
-          <Form.Item
-            label="可见角色（不选则全部可见）"
-            name="visibleRoles"
-          >
-            <Select mode="multiple" placeholder="选择可见角色" style={{ width: '100%' }}>
-              {roles.map((role) => (
-                <Option key={role._id} value={role._id}>
-                  {role.name}
-                </Option>
-              ))}
-            </Select>
-          </Form.Item>
+            <Form.Item
+              label="可见角色（不选则全部角色可见）"
+              name="visibleRoles"
+              extra="设置后，仅所选角色可以查看、引用该条目"
+            >
+              <Select mode="multiple" placeholder="选择可见角色" style={{ width: '100%' }}>
+                {roles.map((role) => (
+                  <Option key={role._id} value={role._id}>
+                    {role.name}（{role.code}）
+                  </Option>
+                ))}
+              </Select>
+            </Form.Item>
 
-          <Form.Item label="启用状态" name="isActive" valuePropName="checked">
-            <Switch checkedChildren="启用" unCheckedChildren="禁用" />
-          </Form.Item>
-        </Form>
-      </Modal>
+            <Form.Item label="启用状态" name="isActive" valuePropName="checked">
+              <Switch checkedChildren="启用" unCheckedChildren="禁用" />
+            </Form.Item>
+          </Form>
+        </Modal>
+      )}
 
       <Drawer
         title="知识条目详情"
@@ -595,13 +735,12 @@ const KnowledgeBase = () => {
         onClose={() => setDetailVisible(false)}
         extra={
           <Space>
-            {detailData && (
+            {detailData && !detailForbidden && (
               <Button
+                type="primary"
                 icon={<CopyOutlined />}
-                onClick={() => {
-                  handleCopyContent(detailData.content);
-                  handleReference(detailData);
-                }}
+                disabled={!canViewReference(detailData)}
+                onClick={handleDetailReference}
               >
                 引用并复制
               </Button>
@@ -611,8 +750,25 @@ const KnowledgeBase = () => {
       >
         {detailLoading ? (
           <div style={{ textAlign: 'center', padding: '50px' }}>加载中...</div>
+        ) : detailForbidden ? (
+          <Alert
+            type="error"
+            showIcon
+            icon={<WarningOutlined />}
+            message="访问受限"
+            description="该知识条目不在您的角色可见范围内，如需查看请联系管理员调整可见角色设置。"
+            style={{ marginTop: 20 }}
+          />
         ) : detailData ? (
           <div>
+            {!canViewReference(detailData) && (
+              <Alert
+                type="warning"
+                showIcon
+                style={{ marginBottom: 16 }}
+                message="该条目不在您的角色可见范围内，引用按钮已禁用。"
+              />
+            )}
             <Descriptions column={2} bordered style={{ marginBottom: 24 }}>
               <Descriptions.Item label="类型" span={1}>
                 <Tag color={KnowledgeTypeMap[detailData.type]?.color}>
@@ -638,9 +794,11 @@ const KnowledgeBase = () => {
                   : '-'}
               </Descriptions.Item>
               <Descriptions.Item label="适用角色" span={1}>
-                {detailData.visibleRoles && detailData.visibleRoles.length > 0
-                  ? detailData.visibleRoles.map((r: any) => r.name).join('、')
-                  : '全部角色'}
+                {detailData.visibleRoles && detailData.visibleRoles.length > 0 ? (
+                  detailData.visibleRoles.map((r: any) => r.name).join('、')
+                ) : (
+                  <Tag color="purple">全部角色可见</Tag>
+                )}
               </Descriptions.Item>
               <Descriptions.Item label="创建人" span={1}>
                 {detailData.createdBy?.realName || detailData.createdBy?.username || '-'}
