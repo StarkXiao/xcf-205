@@ -4,13 +4,13 @@ import { BellOutlined, ReadOutlined, RightOutlined } from '@ant-design/icons';
 import { useNotification } from '../context/NotificationContext';
 import NotificationItem from './NotificationItem';
 import { useNavigate } from 'react-router-dom';
-import dayjs from 'dayjs';
+import { getNotificationNavigatePath } from '../utils/notification';
 
 const { Text, Title } = Typography;
 
 const NotificationBell = () => {
   const navigate = useNavigate();
-  const { notifications, loading, totalUnread, markAllRead, loadStats } = useNotification();
+  const { notifications, loading, totalUnread, markAllRead, loadStats, markRead } = useNotification();
   const [open, setOpen] = useState(false);
 
   const recentNotifications = notifications
@@ -31,6 +31,14 @@ const NotificationBell = () => {
   const handleGoToCenter = () => {
     setOpen(false);
     navigate('/notifications');
+  };
+
+  const handleNotificationClick = (notification: any) => {
+    setOpen(false);
+    const path = getNotificationNavigatePath(notification);
+    if (path) {
+      navigate(path);
+    }
   };
 
   const dropdownContent = (
@@ -86,9 +94,7 @@ const NotificationBell = () => {
                   key={item._id}
                   notification={item}
                   showActions={false}
-                  onClick={() => {
-                    setOpen(false);
-                  }}
+                  onClick={() => handleNotificationClick(item)}
                 />
               )}
             />

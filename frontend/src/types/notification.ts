@@ -8,15 +8,16 @@ export interface Notification {
   title: string;
   content: string;
   status: NotificationStatus;
+  userId: string;
   createdAt: string;
+  updatedAt: string;
   readAt?: string;
   relatedId?: string;
   relatedType?: string;
-  sender?: {
-    _id: string;
-    realName: string;
-  };
+  senderId?: string;
+  senderName?: string;
   priority?: 'low' | 'medium' | 'high';
+  extra?: Record<string, any>;
 }
 
 export interface NotificationStats {

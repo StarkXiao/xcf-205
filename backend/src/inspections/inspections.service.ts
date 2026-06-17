@@ -16,6 +16,11 @@ import {
   CheckinRecord,
 } from '../schemas/inspection.schema';
 import { Event } from '../schemas/event.schema';
+import { NotificationsService } from '../notifications/notifications.service';
+import {
+  NotificationType,
+  NotificationPriority,
+} from '../schemas/notification.schema';
 
 @Injectable()
 export class InspectionsService {
@@ -24,6 +29,7 @@ export class InspectionsService {
     @InjectModel(InspectionTask.name) private taskModel: Model<InspectionTaskDocument>,
     @InjectModel(InspectionException.name) private exceptionModel: Model<InspectionExceptionDocument>,
     @InjectModel(Event.name) private eventModel: Model<any>,
+    private notificationsService: NotificationsService,
   ) {}
 
   async findAllPlans(query: any = {}) {
@@ -214,7 +220,35 @@ export class InspectionsService {
     }
 
     if (tasks.length > 0) {
-      await this.taskModel.insertMany(tasks);
+      const createdTasks = await this.taskModel.insertMany(tasks);
+
+      const userTaskCount: Record<string, { count: number; name: string }> = {};
+      createdTasks.forEach((task: any) => {
+        const userId = task.assigneeId.toString();
+        if (!userTaskCount[userId]) {
+          userTaskCount[userId] = { count: 0, name: task.assigneeName };
+        }
+        userTaskCount[userId].count++;
+      });
+
+      const notificationDtos = Object.entries(userTaskCount).map(([userId, data]) => ({
+        userId,
+        type: NotificationType.TODO,
+        title: `您有${data.count}个新的巡检任务`,
+        content: `巡检计划【${plan.name}】已生成新的巡检任务，请及时查看并完成。`,
+        relatedId: plan._id.toString(),
+        relatedType: 'inspection_plan',
+        priority: NotificationPriority.MEDIUM,
+        extra: {
+          planId: plan._id.toString(),
+          planName: plan.name,
+          taskCount: data.count,
+        },
+      }));
+
+      if (notificationDtos.length > 0) {
+        await this.notificationsService.createMany(notificationDtos);
+      }
     }
   }
 

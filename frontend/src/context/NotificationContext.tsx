@@ -13,6 +13,7 @@ interface NotificationContextType {
   notifications: Notification[];
   stats: NotificationStats;
   loading: boolean;
+  total: number;
   loadNotifications: (params?: {
     type?: NotificationType | 'all';
     status?: 'unread' | 'read' | 'all';
@@ -23,7 +24,7 @@ interface NotificationContextType {
   markRead: (id: string) => Promise<void>;
   markAllRead: (type?: NotificationType) => Promise<void>;
   removeNotification: (id: string) => Promise<void>;
-  clearAll: (type?: NotificationType) => Promise<void>;
+  clearAll: (type?: NotificationType) => Promise<any>;
   totalUnread: number;
 }
 
@@ -36,6 +37,7 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
     unread: 0,
     byType: { system: 0, todo: 0, reminder: 0, approval: 0 },
   });
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
 
   const loadNotifications = useCallback(async (params?: {
@@ -48,6 +50,7 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
     try {
       const result = await getNotifications(params);
       setNotifications(result.list);
+      setTotal(result.total);
     } catch (error) {
       console.error('加载通知列表失败:', error);
     } finally {
@@ -83,7 +86,7 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
 
   const markAllRead = useCallback(async (type?: NotificationType) => {
     try {
-      await markAllAsRead(type);
+      const result = await markAllAsRead(type);
       setNotifications((prev) =>
         prev.map((n) =>
           (!type || n.type === type) && n.status === 'unread'
@@ -91,33 +94,29 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
             : n
         )
       );
-      const unreadCount = notifications.filter(
-        (n) => (!type || n.type === type) && n.status === 'unread'
-      ).length;
       setStats((prev) => ({
         ...prev,
-        unread: Math.max(0, prev.unread - unreadCount),
+        unread: Math.max(0, prev.unread - result.updated),
       }));
     } catch (error) {
       console.error('全部标记已读失败:', error);
     }
-  }, [notifications]);
+  }, []);
 
   const removeNotification = useCallback(async (id: string) => {
     try {
+      const notification = notifications.find((n) => n._id === id);
       await deleteNotification(id);
-      const removed = notifications.find((n) => n._id === id);
       setNotifications((prev) => prev.filter((n) => n._id !== id));
-      if (removed && removed.status === 'unread') {
-        setStats((prev) => ({
-          ...prev,
-          unread: Math.max(0, prev.unread - 1),
-          total: Math.max(0, prev.total - 1),
-        }));
-      } else {
+      if (notification) {
         setStats((prev) => ({
           ...prev,
           total: Math.max(0, prev.total - 1),
+          unread: notification.status === 'unread' ? Math.max(0, prev.unread - 1) : prev.unread,
+          byType: {
+            ...prev.byType,
+            [notification.type]: Math.max(0, prev.byType[notification.type] - 1),
+          },
         }));
       }
     } catch (error) {
@@ -127,21 +126,14 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
 
   const clearAll = useCallback(async (type?: NotificationType) => {
     try {
-      await clearAllNotifications(type);
-      const removedCount = notifications.filter((n) => !type || n.type === type).length;
-      const unreadRemoved = notifications.filter(
-        (n) => (!type || n.type === type) && n.status === 'unread'
-      ).length;
+      const result = await clearAllNotifications(type);
       setNotifications((prev) => prev.filter((n) => type && n.type !== type));
-      setStats((prev) => ({
-        ...prev,
-        unread: Math.max(0, prev.unread - unreadRemoved),
-        total: Math.max(0, prev.total - removedCount),
-      }));
+      loadStats();
+      return result;
     } catch (error) {
       console.error('清空通知失败:', error);
     }
-  }, [notifications]);
+  }, [loadStats]);
 
   useEffect(() => {
     loadStats();
@@ -154,6 +146,7 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
         notifications,
         stats,
         loading,
+        total,
         loadNotifications,
         loadStats,
         markRead,

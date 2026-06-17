@@ -124,9 +124,9 @@ const NotificationItem = ({ notification, showActions = true, onClick }: Notific
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   {dayjs(notification.createdAt).fromNow()}
                 </Text>
-                {notification.sender && (
+                {notification.senderName && (
                   <Text type="secondary" style={{ fontSize: 12 }}>
-                    来自: {notification.sender.realName}
+                    来自: {notification.senderName}
                   </Text>
                 )}
               </Space>

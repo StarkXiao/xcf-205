@@ -4,6 +4,11 @@ import { Model, Types } from 'mongoose';
 import { WorkOrder, WorkOrderDocument, WorkOrderStatus } from '../schemas/workorder.schema';
 import { WorkOrderLog, WorkOrderLogDocument } from '../schemas/workorder-log.schema';
 import { Event, EventStatus } from '../schemas/event.schema';
+import { NotificationsService } from '../notifications/notifications.service';
+import {
+  NotificationType,
+  NotificationPriority,
+} from '../schemas/notification.schema';
 
 @Injectable()
 export class WorkOrdersService {
@@ -11,6 +16,7 @@ export class WorkOrdersService {
     @InjectModel(WorkOrder.name) private workOrderModel: Model<WorkOrderDocument>,
     @InjectModel(WorkOrderLog.name) private workOrderLogModel: Model<WorkOrderLogDocument>,
     @InjectModel(Event.name) private eventModel: Model<any>,
+    private notificationsService: NotificationsService,
   ) {}
 
   generateOrderNo() {
@@ -162,6 +168,20 @@ export class WorkOrdersService {
       },
     });
 
+    await this.notificationsService.create({
+      userId: data.handlerId,
+      type: NotificationType.TODO,
+      title: '新工单待处理',
+      content: `您有一个新的工单【${workOrder.orderNo}】需要处理：${workOrder.title}`,
+      relatedId: workOrder._id.toString(),
+      relatedType: 'workorder',
+      senderId: data.assignerId,
+      senderName: data.assignerName,
+      priority: workOrder.priority === 'urgent' || workOrder.priority === 'high'
+        ? NotificationPriority.HIGH
+        : NotificationPriority.MEDIUM,
+    });
+
     return workOrder;
   }
 
@@ -214,6 +234,20 @@ export class WorkOrdersService {
       to: { status: WorkOrderStatus.COMPLETED },
     });
 
+    if (workOrder.assignerId) {
+      await this.notificationsService.create({
+        userId: workOrder.assignerId.toString(),
+        type: NotificationType.APPROVAL,
+        title: '工单待核查',
+        content: `工单【${workOrder.orderNo}】已处理完成，等待核查：${workOrder.title}`,
+        relatedId: workOrder._id.toString(),
+        relatedType: 'workorder',
+        senderId: data.handlerId,
+        senderName: data.handlerName,
+        priority: NotificationPriority.MEDIUM,
+      });
+    }
+
     return workOrder;
   }
 
@@ -255,6 +289,21 @@ export class WorkOrdersService {
       to: { status: workOrder.status },
     });
 
+    if (workOrder.handlerId) {
+      const isPass = data.verifyResult === 'pass';
+      await this.notificationsService.create({
+        userId: workOrder.handlerId.toString(),
+        type: NotificationType.APPROVAL,
+        title: isPass ? '工单核查通过' : '工单核查不通过',
+        content: `工单【${workOrder.orderNo}】核查${isPass ? '通过' : '不通过'}${data.verifyRemark ? '：' + data.verifyRemark : ''}`,
+        relatedId: workOrder._id.toString(),
+        relatedType: 'workorder',
+        senderId: data.verifierId,
+        senderName: data.verifierName,
+        priority: isPass ? NotificationPriority.LOW : NotificationPriority.HIGH,
+      });
+    }
+
     return workOrder;
   }
 
@@ -281,6 +330,44 @@ export class WorkOrdersService {
       operatorName: data.operatorName,
       from: { status: oldStatus },
       to: { status: WorkOrderStatus.CLOSED },
+    });
+
+    return workOrder;
+  }
+
+  async remind(id: string, data: { operatorId: string; operatorName: string; message?: string }) {
+    const workOrder = await this.workOrderModel.findById(id);
+    if (!workOrder) {
+      throw new NotFoundException('工单不存在');
+    }
+
+    if (!workOrder.handlerId) {
+      throw new BadRequestException('工单尚未指派处理人，无法催办');
+    }
+
+    if (workOrder.status === WorkOrderStatus.COMPLETED ||
+        workOrder.status === WorkOrderStatus.VERIFIED ||
+        workOrder.status === WorkOrderStatus.CLOSED) {
+      throw new BadRequestException('工单已完成或已关闭，无需催办');
+    }
+
+    await this.addLog(id, {
+      action: '催办',
+      description: data.message || '请尽快处理此工单',
+      operatorId: data.operatorId,
+      operatorName: data.operatorName,
+    });
+
+    await this.notificationsService.create({
+      userId: workOrder.handlerId.toString(),
+      type: NotificationType.REMINDER,
+      title: '工单催办通知',
+      content: data.message || `工单【${workOrder.orderNo}】需要尽快处理：${workOrder.title}`,
+      relatedId: workOrder._id.toString(),
+      relatedType: 'workorder',
+      senderId: data.operatorId,
+      senderName: data.operatorName,
+      priority: NotificationPriority.HIGH,
     });
 
     return workOrder;

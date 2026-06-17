@@ -74,6 +74,21 @@ const workOrderLogSchema = new Schema({
   to: { type: Schema.Types.Mixed, default: {} },
 }, { timestamps: true });
 
+const notificationSchema = new Schema({
+  type: { type: String, required: true, enum: ['system', 'todo', 'reminder', 'approval'] },
+  title: { type: String, required: true },
+  content: { type: String, required: true },
+  status: { type: String, default: 'unread', enum: ['unread', 'read'] },
+  userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  readAt: Date,
+  relatedId: String,
+  relatedType: String,
+  senderId: { type: Schema.Types.ObjectId, ref: 'User' },
+  senderName: String,
+  priority: { type: String, default: 'medium', enum: ['low', 'medium', 'high'] },
+  extra: { type: Object, default: {} },
+}, { timestamps: true });
+
 async function seed() {
   console.log('开始初始化数据...');
   
@@ -85,29 +100,33 @@ async function seed() {
   const Event = model('Event', eventSchema);
   const WorkOrder = model('WorkOrder', workOrderSchema);
   const WorkOrderLog = model('WorkOrderLog', workOrderLogSchema);
+  const Notification = model('Notification', notificationSchema);
 
-  await clearData(Role, User, Event, WorkOrder, WorkOrderLog);
+  await clearData(Role, User, Event, WorkOrder, WorkOrderLog, Notification);
   const roles = await seedRoles(Role);
   const users = await seedUsers(User, roles);
   const events = await seedEvents(Event, users);
   const workOrders = await seedWorkOrders(WorkOrder, WorkOrderLog, events, users);
+  const notifications = await seedNotifications(Notification, users, workOrders);
   
   console.log('数据初始化完成！');
   console.log(`- 角色: ${roles.length} 个`);
   console.log(`- 用户: ${users.length} 个`);
   console.log(`- 事件: ${events.length} 个`);
   console.log(`- 工单: ${workOrders.length} 个`);
+  console.log(`- 通知: ${notifications.length} 条`);
   
   process.exit(0);
 }
 
-async function clearData(Role: any, User: any, Event: any, WorkOrder: any, WorkOrderLog: any) {
+async function clearData(Role: any, User: any, Event: any, WorkOrder: any, WorkOrderLog: any, Notification: any) {
   console.log('清空现有数据...');
   await Role.deleteMany({});
   await User.deleteMany({});
   await Event.deleteMany({});
   await WorkOrder.deleteMany({});
   await WorkOrderLog.deleteMany({});
+  await Notification.deleteMany({});
   console.log('数据清空完成');
 }
 
@@ -721,6 +740,142 @@ async function seedWorkOrders(WorkOrder: any, WorkOrderLog: any, events: any[], 
 
   console.log('创建工单日志完成');
   return workOrders;
+}
+
+async function seedNotifications(Notification: any, users: any[], workOrders: any[]) {
+  console.log('创建通知数据...');
+  
+  const handlerUsers = users.filter((u: any) => u.username.startsWith('handler'));
+  const dispatcherUsers = users.filter((u: any) => u.username.startsWith('dispatcher'));
+  const verifierUsers = users.filter((u: any) => u.username.startsWith('verifier'));
+  
+  const notificationsData: any[] = [];
+  
+  const processingWorkOrders = workOrders.filter((wo: any) => wo.status === 'processing');
+  const assignedWorkOrders = workOrders.filter((wo: any) => wo.status === 'assigned');
+  const completedWorkOrders = workOrders.filter((wo: any) => wo.status === 'completed');
+  const verifiedWorkOrders = workOrders.filter((wo: any) => wo.status === 'verified');
+  
+  if (assignedWorkOrders.length > 0) {
+    const wo = assignedWorkOrders[0];
+    notificationsData.push({
+      type: 'todo',
+      title: '新工单待处理',
+      content: `您有一个新的工单【${wo.orderNo}】需要处理：${wo.title}`,
+      status: 'unread',
+      userId: wo.handlerId,
+      relatedId: wo._id.toString(),
+      relatedType: 'workorder',
+      senderId: wo.assignerId,
+      senderName: wo.assignerName,
+      priority: wo.priority === 'urgent' || wo.priority === 'high' ? 'high' : 'medium',
+      createdAt: new Date(wo.createdAt.getTime() + 5 * 60 * 1000),
+    });
+  }
+  
+  if (processingWorkOrders.length > 0) {
+    const wo = processingWorkOrders[0];
+    notificationsData.push({
+      type: 'reminder',
+      title: '工单催办通知',
+      content: `工单【${wo.orderNo}】需要尽快处理：${wo.title}`,
+      status: 'unread',
+      userId: wo.handlerId,
+      relatedId: wo._id.toString(),
+      relatedType: 'workorder',
+      senderId: dispatcherUsers[0]._id,
+      senderName: dispatcherUsers[0].realName,
+      priority: 'high',
+      createdAt: new Date(Date.now() - 30 * 60 * 1000),
+    });
+  }
+  
+  if (completedWorkOrders.length > 0) {
+    const wo = completedWorkOrders[0];
+    notificationsData.push({
+      type: 'approval',
+      title: '工单待核查',
+      content: `工单【${wo.orderNo}】已处理完成，等待核查：${wo.title}`,
+      status: 'unread',
+      userId: wo.assignerId,
+      relatedId: wo._id.toString(),
+      relatedType: 'workorder',
+      senderId: wo.handlerId,
+      senderName: wo.handlerName,
+      priority: 'medium',
+      createdAt: wo.handleTime,
+    });
+  }
+  
+  if (verifiedWorkOrders.length > 0) {
+    const wo = verifiedWorkOrders[0];
+    notificationsData.push({
+      type: 'approval',
+      title: '工单核查通过',
+      content: `工单【${wo.orderNo}】核查通过：${wo.title}`,
+      status: 'read',
+      userId: wo.handlerId,
+      relatedId: wo._id.toString(),
+      relatedType: 'workorder',
+      senderId: verifierUsers[0]._id,
+      senderName: verifierUsers[0].realName,
+      priority: 'low',
+      createdAt: wo.verifyTime,
+      readAt: new Date(wo.verifyTime.getTime() + 2 * 60 * 60 * 1000),
+    });
+  }
+  
+  notificationsData.push({
+    type: 'system',
+    title: '欢迎使用智慧城管系统',
+    content: '系统已完成升级，新增通知中心功能，您可以及时接收工单提醒、催办通知和审批结果。',
+    status: 'unread',
+    userId: handlerUsers[0]._id,
+    priority: 'medium',
+    createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+  });
+  
+  notificationsData.push({
+    type: 'system',
+    title: '系统维护通知',
+    content: '本周六凌晨2点至4点将进行系统维护，期间可能无法正常访问，请提前做好工作安排。',
+    status: 'unread',
+    userId: handlerUsers[0]._id,
+    priority: 'low',
+    createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+  });
+  
+  if (processingWorkOrders.length > 1) {
+    const wo = processingWorkOrders[1];
+    notificationsData.push({
+      type: 'todo',
+      title: '新工单待处理',
+      content: `您有一个新的工单【${wo.orderNo}】需要处理：${wo.title}`,
+      status: 'unread',
+      userId: wo.handlerId,
+      relatedId: wo._id.toString(),
+      relatedType: 'workorder',
+      senderId: wo.assignerId,
+      senderName: wo.assignerName,
+      priority: wo.priority === 'urgent' || wo.priority === 'high' ? 'high' : 'medium',
+      createdAt: new Date(wo.createdAt.getTime() + 5 * 60 * 1000),
+    });
+  }
+  
+  notificationsData.push({
+    type: 'system',
+    title: '巡检计划提醒',
+    content: '您有本月的巡检任务待完成，请及时查看并按计划执行。',
+    status: 'unread',
+    userId: handlerUsers[0]._id,
+    relatedType: 'inspection_plan',
+    priority: 'medium',
+    createdAt: new Date(Date.now() - 5 * 60 * 60 * 1000),
+  });
+  
+  const notifications = await Notification.create(notificationsData);
+  console.log(`创建了 ${notifications.length} 条通知`);
+  return notifications;
 }
 
 function generateOrderNo() {
