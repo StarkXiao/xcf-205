@@ -5,6 +5,7 @@ import {
   ApprovalFlow,
   ApprovalFlowDocument,
   ApprovalFlowType,
+  ApproverType,
 } from '../schemas/approval-flow.schema';
 import {
   ApprovalInstance,
@@ -16,6 +17,10 @@ import {
   ApprovalLog,
   ApprovalLogDocument,
 } from '../schemas/approval-log.schema';
+import { WorkOrder, WorkOrderDocument, WorkOrderStatus } from '../schemas/workorder.schema';
+import { WorkOrderLog, WorkOrderLogDocument } from '../schemas/workorder-log.schema';
+import { User, UserDocument } from '../schemas/user.schema';
+import { Role, RoleDocument } from '../schemas/role.schema';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
   NotificationType,
@@ -31,6 +36,14 @@ export class ApprovalsService {
     private approvalInstanceModel: Model<ApprovalInstanceDocument>,
     @InjectModel(ApprovalLog.name)
     private approvalLogModel: Model<ApprovalLogDocument>,
+    @InjectModel(WorkOrder.name)
+    private workOrderModel: Model<WorkOrderDocument>,
+    @InjectModel(WorkOrderLog.name)
+    private workOrderLogModel: Model<WorkOrderLogDocument>,
+    @InjectModel(User.name)
+    private userModel: Model<UserDocument>,
+    @InjectModel(Role.name)
+    private roleModel: Model<RoleDocument>,
     private notificationsService: NotificationsService,
   ) {}
 
@@ -153,15 +166,34 @@ export class ApprovalsService {
       throw new BadRequestException('该工单已有同类型的审批申请正在处理中');
     }
 
-    const nodeInstances = flow.nodes.map((node, index) => ({
-      nodeName: node.name,
-      nodeType: node.type,
-      nodeIndex: index,
-      status: node.type === 'submit' ? NodeInstanceStatus.APPROVED : NodeInstanceStatus.PENDING,
-      approverId: node.approverIds && node.approverIds.length > 0 ? node.approverIds[0] : undefined,
-      comment: node.type === 'submit' ? '提交申请' : undefined,
-      operateTime: node.type === 'submit' ? new Date() : undefined,
-    }));
+    const applicant = await this.userModel.findById(data.applicantId);
+    if (!applicant) {
+      throw new NotFoundException('申请人不存在');
+    }
+
+    const nodeInstances = [];
+    for (let i = 0; i < flow.nodes.length; i++) {
+      const node = flow.nodes[i];
+      const approver = await this.resolveNodeApprover(node, applicant, data.relatedId);
+
+      nodeInstances.push({
+        nodeName: node.name,
+        nodeType: node.type,
+        nodeIndex: i,
+        status: node.type === 'submit' ? NodeInstanceStatus.APPROVED : NodeInstanceStatus.PENDING,
+        approverId: node.type === 'submit'
+          ? new Types.ObjectId(data.applicantId)
+          : approver?._id,
+        approverName: node.type === 'submit'
+          ? data.applicantName
+          : approver?.realName,
+        comment: node.type === 'submit' ? '提交申请' : undefined,
+        operateTime: node.type === 'submit' ? new Date() : undefined,
+        approverType: node.approverType,
+        roleCode: node.roleCode,
+        approverIds: node.approverIds,
+      });
+    }
 
     let currentNodeIndex = 0;
     for (let i = 0; i < nodeInstances.length; i++) {
@@ -235,6 +267,9 @@ export class ApprovalsService {
     if (currentNode.status !== NodeInstanceStatus.PENDING) {
       throw new BadRequestException('当前节点已处理');
     }
+    if (!currentNode.approverId || currentNode.approverId.toString() !== data.approverId) {
+      throw new BadRequestException('您不是当前节点的审批人，无法操作');
+    }
 
     currentNode.status = NodeInstanceStatus.APPROVED;
     currentNode.approverId = new Types.ObjectId(data.approverId) as any;
@@ -280,13 +315,25 @@ export class ApprovalsService {
 
       await this.handleApprovalEffect(instance);
     } else {
+      const applicant = await this.userModel.findById(instance.applicantId);
+      const nextNodeData = instance.nodeInstances[nextNodeIndex];
+      const nextApprover = await this.resolveNodeApprover(
+        nextNodeData,
+        applicant,
+        instance.relatedId.toString(),
+      );
+
+      if (nextApprover) {
+        nextNodeData.approverId = nextApprover._id;
+        nextNodeData.approverName = nextApprover.realName;
+      }
+
       instance.currentNodeIndex = nextNodeIndex;
       await instance.save();
 
-      const nextNode = instance.nodeInstances[nextNodeIndex];
-      if (nextNode && nextNode.approverId) {
+      if (nextNodeData.approverId) {
         await this.notificationsService.create({
-          userId: nextNode.approverId.toString(),
+          userId: nextNodeData.approverId.toString(),
           type: NotificationType.APPROVAL,
           title: `待审批：${this.getTypeLabel(instance.type)}申请`,
           content: `${instance.applicantName} 的${this.getTypeLabel(instance.type)}申请需要您审批：${instance.title}`,
@@ -320,6 +367,9 @@ export class ApprovalsService {
     if (!currentNode) throw new BadRequestException('当前节点不存在');
     if (currentNode.status !== NodeInstanceStatus.PENDING) {
       throw new BadRequestException('当前节点已处理');
+    }
+    if (!currentNode.approverId || currentNode.approverId.toString() !== data.approverId) {
+      throw new BadRequestException('您不是当前节点的审批人，无法操作');
     }
 
     currentNode.status = NodeInstanceStatus.REJECTED;
@@ -367,6 +417,9 @@ export class ApprovalsService {
     if (instance.status !== ApprovalStatus.PENDING) {
       throw new BadRequestException('只能撤销待审批的申请');
     }
+    if (instance.applicantId.toString() !== data.operatorId) {
+      throw new BadRequestException('只有申请人可以撤销申请');
+    }
 
     instance.status = ApprovalStatus.CANCELLED;
     await instance.save();
@@ -379,6 +432,21 @@ export class ApprovalsService {
       from: { status: ApprovalStatus.PENDING },
       to: { status: ApprovalStatus.CANCELLED },
     });
+
+    const currentNode = instance.nodeInstances[instance.currentNodeIndex];
+    if (currentNode?.approverId) {
+      await this.notificationsService.create({
+        userId: currentNode.approverId.toString(),
+        type: NotificationType.APPROVAL,
+        title: `申请已撤销：${this.getTypeLabel(instance.type)}申请`,
+        content: `${data.operatorName} 撤销了${this.getTypeLabel(instance.type)}申请：${instance.title}`,
+        relatedId: instance._id.toString(),
+        relatedType: 'approval',
+        senderId: data.operatorId,
+        senderName: data.operatorName,
+        priority: NotificationPriority.LOW,
+      });
+    }
 
     return instance;
   }
@@ -401,6 +469,69 @@ export class ApprovalsService {
     });
   }
 
+  private async resolveNodeApprover(
+    node: any,
+    applicant: UserDocument | null,
+    relatedId: string,
+  ): Promise<UserDocument | null> {
+    if (!node || node.nodeType !== 'approve') {
+      return null;
+    }
+
+    const approverType = node.approverType || 'specific';
+
+    switch (approverType) {
+      case ApproverType.SPECIFIC:
+        if (node.approverIds && node.approverIds.length > 0) {
+          const approverId = Array.isArray(node.approverIds)
+            ? node.approverIds[0]
+            : node.approverIds;
+          return this.userModel.findById(approverId);
+        }
+        return null;
+
+      case ApproverType.ROLE:
+        if (node.roleCode) {
+          const role = await this.roleModel.findOne({ code: node.roleCode });
+          if (role) {
+            const users = await this.userModel
+              .find({ roleId: role._id, isActive: true })
+              .limit(1);
+            return users.length > 0 ? users[0] : null;
+          }
+        }
+        return null;
+
+      case ApproverType.DEPARTMENT_HEAD:
+        if (applicant?.department) {
+          const role = await this.roleModel.findOne({ code: 'dept_head' });
+          if (role) {
+            const users = await this.userModel
+              .find({
+                roleId: role._id,
+                department: applicant.department,
+                isActive: true,
+              })
+              .limit(1);
+            if (users.length > 0) {
+              return users[0];
+            }
+          }
+          const adminRole = await this.roleModel.findOne({ code: 'admin' });
+          if (adminRole) {
+            const admins = await this.userModel
+              .find({ roleId: adminRole._id, isActive: true })
+              .limit(1);
+            return admins.length > 0 ? admins[0] : null;
+          }
+        }
+        return null;
+
+      default:
+        return null;
+    }
+  }
+
   private findNextPendingNode(nodeInstances: any[], currentIndex: number): number {
     for (let i = currentIndex + 1; i < nodeInstances.length; i++) {
       if (nodeInstances[i].nodeType === 'approve' && nodeInstances[i].status === NodeInstanceStatus.PENDING) {
@@ -411,7 +542,131 @@ export class ApprovalsService {
   }
 
   private async handleApprovalEffect(instance: ApprovalInstanceDocument) {
-    const { WorkOrder, WorkOrderStatus } = await import('../schemas/workorder.schema');
+    const workOrderId = instance.relatedId;
+    if (!workOrderId) return;
+
+    const workOrder = await this.workOrderModel.findById(workOrderId);
+    if (!workOrder) return;
+
+    switch (instance.type) {
+      case ApprovalFlowType.EXTENSION:
+        await this.handleExtensionEffect(workOrder, instance);
+        break;
+      case ApprovalFlowType.REASSIGN:
+        await this.handleReassignEffect(workOrder, instance);
+        break;
+      case ApprovalFlowType.CLOSE_REJECT:
+        await this.handleCloseRejectEffect(workOrder, instance);
+        break;
+    }
+  }
+
+  private async handleExtensionEffect(
+    workOrder: WorkOrderDocument,
+    instance: ApprovalInstanceDocument,
+  ) {
+    const extraData = instance.extraData || {};
+    if (extraData.newDeadline) {
+      const oldDeadline = workOrder.deadline;
+      workOrder.deadline = new Date(extraData.newDeadline);
+      await workOrder.save();
+
+      const log = new this.workOrderLogModel({
+        workOrderId: workOrder._id,
+        action: '延期',
+        description: `审批通过，延期${extraData.extensionDays || ''}天，截止时间从${oldDeadline ? new Date(oldDeadline).toLocaleString() : '不限'}延长至${new Date(extraData.newDeadline).toLocaleString()}`,
+        operatorId: instance.applicantId,
+        operatorName: instance.applicantName,
+        from: { deadline: oldDeadline },
+        to: { deadline: extraData.newDeadline },
+      });
+      await log.save();
+
+      await this.workOrderModel.findByIdAndUpdate(workOrder._id, {
+        $push: { logs: log._id },
+      });
+    }
+  }
+
+  private async handleReassignEffect(
+    workOrder: WorkOrderDocument,
+    instance: ApprovalInstanceDocument,
+  ) {
+    const extraData = instance.extraData || {};
+    if (extraData.newHandlerId) {
+      const oldHandler = workOrder.handlerName;
+      const oldHandlerId = workOrder.handlerId;
+
+      workOrder.handlerId = new Types.ObjectId(extraData.newHandlerId) as any;
+      workOrder.handlerName = extraData.newHandlerName || '';
+      workOrder.department = extraData.newHandlerDepartment || workOrder.department;
+      await workOrder.save();
+
+      const log = new this.workOrderLogModel({
+        workOrderId: workOrder._id,
+        action: '改派',
+        description: `审批通过，处理人从 ${oldHandler} 改为 ${extraData.newHandlerName}`,
+        operatorId: instance.applicantId,
+        operatorName: instance.applicantName,
+        from: { handlerId: oldHandlerId, handlerName: oldHandler },
+        to: { handlerId: extraData.newHandlerId, handlerName: extraData.newHandlerName },
+      });
+      await log.save();
+
+      await this.workOrderModel.findByIdAndUpdate(workOrder._id, {
+        $push: { logs: log._id },
+      });
+
+      await this.notificationsService.create({
+        userId: extraData.newHandlerId,
+        type: NotificationType.TODO,
+        title: '工单改派通知',
+        content: `工单【${workOrder.orderNo}】已改派给您处理：${workOrder.title}`,
+        relatedId: workOrder._id.toString(),
+        relatedType: 'workorder',
+        senderId: instance.applicantId,
+        senderName: instance.applicantName,
+        priority: NotificationPriority.HIGH,
+      });
+    }
+  }
+
+  private async handleCloseRejectEffect(
+    workOrder: WorkOrderDocument,
+    instance: ApprovalInstanceDocument,
+  ) {
+    const oldStatus = workOrder.status;
+    workOrder.status = WorkOrderStatus.PROCESSING;
+    await workOrder.save();
+
+    const log = new this.workOrderLogModel({
+      workOrderId: workOrder._id,
+      action: '关闭驳回',
+      description: `审批通过，关闭驳回，工单从「${oldStatus}」状态恢复为处理中`,
+      operatorId: instance.applicantId,
+      operatorName: instance.applicantName,
+      from: { status: oldStatus },
+      to: { status: WorkOrderStatus.PROCESSING },
+    });
+    await log.save();
+
+    await this.workOrderModel.findByIdAndUpdate(workOrder._id, {
+      $push: { logs: log._id },
+    });
+
+    if (workOrder.handlerId) {
+      await this.notificationsService.create({
+        userId: workOrder.handlerId.toString(),
+        type: NotificationType.TODO,
+        title: '工单关闭驳回通知',
+        content: `工单【${workOrder.orderNo}】被关闭驳回，请重新处理：${workOrder.title}`,
+        relatedId: workOrder._id.toString(),
+        relatedType: 'workorder',
+        senderId: instance.applicantId,
+        senderName: instance.applicantName,
+        priority: NotificationPriority.HIGH,
+      });
+    }
   }
 
   private async addLog(instanceId: Types.ObjectId | string, logData: any) {

@@ -17,6 +17,8 @@ import {
   DeleteOutlined,
   EditOutlined,
   SaveOutlined,
+  UpOutlined,
+  DownOutlined,
 } from '@ant-design/icons';
 import {
   getApprovalFlows,
@@ -25,6 +27,7 @@ import {
   deleteApprovalFlow,
 } from '../api/approval';
 import { getUsers } from '../api/user';
+import { getRoles } from '../api/role';
 
 const { Option } = Select;
 
@@ -52,11 +55,13 @@ const ApprovalConfig = () => {
   const [editingFlow, setEditingFlow] = useState<any>(null);
   const [form] = Form.useForm();
   const [users, setUsers] = useState<any[]>([]);
+  const [roles, setRoles] = useState<any[]>([]);
   const [nodes, setNodes] = useState<any[]>([]);
 
   useEffect(() => {
     loadFlows();
     loadUsers();
+    loadRoles();
   }, []);
 
   const loadFlows = async () => {
@@ -77,6 +82,15 @@ const ApprovalConfig = () => {
       setUsers(data.list || data || []);
     } catch (error) {
       console.error('加载用户列表失败:', error);
+    }
+  };
+
+  const loadRoles = async () => {
+    try {
+      const data: any = await getRoles();
+      setRoles(data || []);
+    } catch (error) {
+      console.error('加载角色列表失败:', error);
     }
   };
 
@@ -108,9 +122,12 @@ const ApprovalConfig = () => {
       const data = {
         ...values,
         nodes: nodes.map((n, index) => ({
-          ...n,
+          name: n.name,
+          type: n.type,
           order: index,
+          approverType: n.approverType,
           approverIds: n.approverIds || [],
+          roleCode: n.roleCode,
         })),
       };
 
@@ -154,6 +171,21 @@ const ApprovalConfig = () => {
 
   const handleRemoveNode = (index: number) => {
     const newNodes = nodes.filter((_, i) => i !== index);
+    setNodes(newNodes);
+  };
+
+  const handleMoveNode = (index: number, direction: 'up' | 'down') => {
+    if (direction === 'up' && index <= 1) return;
+    if (direction === 'down' && index >= nodes.length - 2) return;
+
+    const newNodes = [...nodes];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+
+    if (newNodes[targetIndex].type === 'submit' || newNodes[targetIndex].type === 'end') return;
+
+    const temp = newNodes[index];
+    newNodes[index] = newNodes[targetIndex];
+    newNodes[targetIndex] = temp;
     setNodes(newNodes);
   };
 
@@ -289,15 +321,35 @@ const ApprovalConfig = () => {
               size="small"
               style={{ marginBottom: 12, borderLeft: `3px solid ${node.type === 'submit' ? '#1890ff' : node.type === 'approve' ? '#faad14' : '#52c41a'}` }}
               extra={
-                node.type !== 'submit' && node.type !== 'end' && nodes.length > 2 && (
-                  <Button
-                    type="text"
-                    danger
-                    size="small"
-                    icon={<DeleteOutlined />}
-                    onClick={() => handleRemoveNode(index)}
-                  />
-                )
+                <Space size={4}>
+                  {node.type === 'approve' && (
+                    <>
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<UpOutlined />}
+                        disabled={index <= 1}
+                        onClick={() => handleMoveNode(index, 'up')}
+                      />
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<DownOutlined />}
+                        disabled={index >= nodes.length - 2}
+                        onClick={() => handleMoveNode(index, 'down')}
+                      />
+                      {nodes.length > 3 && (
+                        <Button
+                          type="text"
+                          danger
+                          size="small"
+                          icon={<DeleteOutlined />}
+                          onClick={() => handleRemoveNode(index)}
+                        />
+                      )}
+                    </>
+                  )}
+                </Space>
               }
             >
               <Space direction="vertical" style={{ width: '100%' }} size="middle">
@@ -321,32 +373,65 @@ const ApprovalConfig = () => {
                 </Space>
 
                 {node.type === 'approve' && (
-                  <Space wrap>
-                    <Select
-                      value={node.approverType}
-                      onChange={(val) => handleNodeChange(index, 'approverType', val)}
-                      style={{ width: 120 }}
-                      placeholder="审批人类型"
-                    >
-                      {approverTypes.map(t => (
-                        <Option key={t.value} value={t.value}>{t.label}</Option>
-                      ))}
-                    </Select>
-
-                    {node.approverType === 'specific' && (
+                  <Space wrap direction="vertical" style={{ width: '100%' }}>
+                    <Space wrap>
+                      <span style={{ color: '#666', minWidth: 80 }}>审批方式:</span>
                       <Select
-                        mode="multiple"
-                        value={node.approverIds || []}
-                        onChange={(val) => handleNodeChange(index, 'approverIds', val)}
-                        style={{ minWidth: 240 }}
-                        placeholder="选择审批人"
+                        value={node.approverType}
+                        onChange={(val) => handleNodeChange(index, 'approverType', val)}
+                        style={{ width: 140 }}
+                        placeholder="选择审批方式"
                       >
-                        {users.map((u: any) => (
-                          <Option key={u._id} value={u._id}>
-                            {u.realName} - {u.department || '无部门'}
-                          </Option>
+                        {approverTypes.map(t => (
+                          <Option key={t.value} value={t.value}>{t.label}</Option>
                         ))}
                       </Select>
+                    </Space>
+
+                    {node.approverType === 'specific' && (
+                      <Space wrap>
+                        <span style={{ color: '#666', minWidth: 80 }}>指定人员:</span>
+                        <Select
+                          mode="multiple"
+                          value={node.approverIds || []}
+                          onChange={(val) => handleNodeChange(index, 'approverIds', val)}
+                          style={{ minWidth: 300 }}
+                          placeholder="选择审批人员"
+                        >
+                          {users.map((u: any) => (
+                            <Option key={u._id} value={u._id}>
+                              {u.realName} - {u.department || '无部门'}
+                            </Option>
+                          ))}
+                        </Select>
+                      </Space>
+                    )}
+
+                    {node.approverType === 'role' && (
+                      <Space wrap>
+                        <span style={{ color: '#666', minWidth: 80 }}>选择角色:</span>
+                        <Select
+                          value={node.roleCode}
+                          onChange={(val) => handleNodeChange(index, 'roleCode', val)}
+                          style={{ width: 200 }}
+                          placeholder="选择审批角色"
+                        >
+                          {roles.map((r: any) => (
+                            <Option key={r.code} value={r.code}>
+                              {r.name}
+                            </Option>
+                          ))}
+                        </Select>
+                        <span style={{ fontSize: 12, color: '#999' }}>
+                          （系统会自动查找该角色下的活跃用户进行审批）
+                        </span>
+                      </Space>
+                    )}
+
+                    {node.approverType === 'department_head' && (
+                      <div style={{ fontSize: 12, color: '#666', paddingLeft: 8 }}>
+                        <span style={{ color: '#faad14' }}>💡</span> 部门负责人模式：将根据申请人所在部门自动查找该部门的负责人（角色编码为 dept_head）进行审批，若未找到则降级为管理员审批。
+                      </div>
                     )}
                   </Space>
                 )}

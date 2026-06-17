@@ -262,7 +262,7 @@ const WorkOrderDetail = () => {
     const status = workOrder.status;
     const canApplyExtension = ['assigned', 'processing'].includes(status) && workOrder.deadline;
     const canApplyReassign = ['assigned', 'processing'].includes(status);
-    const canApplyCloseReject = ['verified'].includes(status);
+    const canApplyCloseReject = ['closed', 'verified'].includes(status);
 
     return (
       <Space>
