@@ -12,10 +12,12 @@ import {
   SettingOutlined,
   CheckCircleOutlined,
   ExclamationCircleOutlined,
+  BellOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import NotificationBell from '../components/NotificationBell';
 
 const { Header, Sider, Content } = Layout;
 
@@ -30,6 +32,11 @@ const MainLayout = () => {
       key: '/dashboard',
       icon: <DashboardOutlined />,
       label: '统计看板',
+    },
+    {
+      key: '/notifications',
+      icon: <BellOutlined />,
+      label: '通知中心',
     },
     {
       key: 'events',
@@ -137,8 +144,9 @@ const MainLayout = () => {
           alignItems: 'center',
           boxShadow: '0 1px 4px rgba(0,21,41,0.08)',
         }}>
+          <NotificationBell />
           <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
-            <Space style={{ cursor: 'pointer' }}>
+            <Space style={{ cursor: 'pointer', marginLeft: 8 }}>
               <Avatar icon={<UserOutlined />} style={{ backgroundColor: '#1890ff' }} />
               <span style={{ color: '#333' }}>{user.realName || '用户'}</span>
             </Space>

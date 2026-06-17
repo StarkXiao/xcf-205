@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { NotificationProvider } from './context/NotificationContext';
 import Login from './pages/Login';
 import MainLayout from './layouts/MainLayout';
 import Dashboard from './pages/Dashboard';
@@ -14,6 +15,7 @@ import InspectionList from './pages/InspectionList';
 import InspectionPlanForm from './pages/InspectionPlanForm';
 import InspectionCheckin from './pages/InspectionCheckin';
 import InspectionExceptionReport from './pages/InspectionExceptionReport';
+import NotificationCenter from './components/NotificationCenter';
 
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   const { isLoggedIn } = useAuth();
@@ -23,27 +25,30 @@ const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
 function App() {
   return (
     <AuthProvider>
-      <Router>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/" element={<PrivateRoute><MainLayout /></PrivateRoute>}>
-            <Route index element={<Navigate to="/dashboard" />} />
-            <Route path="dashboard" element={<Dashboard />} />
-            <Route path="events/report" element={<EventReport />} />
-            <Route path="events/list" element={<EventList />} />
-            <Route path="events/map" element={<EventMap />} />
-            <Route path="workorders" element={<WorkOrderList />} />
-            <Route path="workorders/:id" element={<WorkOrderDetail />} />
-            <Route path="inspection" element={<InspectionList />} />
-            <Route path="inspection/plans/new" element={<InspectionPlanForm />} />
-            <Route path="inspection/plans/:id/edit" element={<InspectionPlanForm />} />
-            <Route path="inspection/tasks/:id/checkin" element={<InspectionCheckin />} />
-            <Route path="inspection/tasks/:id/exception" element={<InspectionExceptionReport />} />
-            <Route path="system/users" element={<UserManage />} />
-            <Route path="system/roles" element={<RoleManage />} />
-          </Route>
-        </Routes>
-      </Router>
+      <NotificationProvider>
+        <Router>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/" element={<PrivateRoute><MainLayout /></PrivateRoute>}>
+              <Route index element={<Navigate to="/dashboard" />} />
+              <Route path="dashboard" element={<Dashboard />} />
+              <Route path="notifications" element={<NotificationCenter />} />
+              <Route path="events/report" element={<EventReport />} />
+              <Route path="events/list" element={<EventList />} />
+              <Route path="events/map" element={<EventMap />} />
+              <Route path="workorders" element={<WorkOrderList />} />
+              <Route path="workorders/:id" element={<WorkOrderDetail />} />
+              <Route path="inspection" element={<InspectionList />} />
+              <Route path="inspection/plans/new" element={<InspectionPlanForm />} />
+              <Route path="inspection/plans/:id/edit" element={<InspectionPlanForm />} />
+              <Route path="inspection/tasks/:id/checkin" element={<InspectionCheckin />} />
+              <Route path="inspection/tasks/:id/exception" element={<InspectionExceptionReport />} />
+              <Route path="system/users" element={<UserManage />} />
+              <Route path="system/roles" element={<RoleManage />} />
+            </Route>
+          </Routes>
+        </Router>
+      </NotificationProvider>
     </AuthProvider>
   );
 }
