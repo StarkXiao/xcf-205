@@ -10,6 +10,7 @@ import { RolesModule } from './roles/roles.module';
 import { InspectionsModule } from './inspections/inspections.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { KnowledgeModule } from './knowledge/knowledge.module';
+import { PerformanceModule } from './performance/performance.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { KnowledgeModule } from './knowledge/knowledge.module';
     InspectionsModule,
     NotificationsModule,
     KnowledgeModule,
+    PerformanceModule,
   ],
 })
 export class AppModule {}
