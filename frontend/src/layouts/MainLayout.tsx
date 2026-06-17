@@ -13,6 +13,7 @@ import {
   CheckCircleOutlined,
   ExclamationCircleOutlined,
   BellOutlined,
+  BookOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useState } from 'react';
@@ -60,6 +61,11 @@ const MainLayout = () => {
       children: [
         { key: '/inspection', icon: <UnorderedListOutlined />, label: '巡检列表' },
       ],
+    },
+    {
+      key: '/knowledge',
+      icon: <BookOutlined />,
+      label: '知识库',
     },
     {
       key: 'system',
