@@ -125,6 +125,10 @@ export const reportException = (data: Partial<InspectionException>) => {
   return request.post('/inspection/exceptions', data);
 };
 
+export const createEventFromException = (exceptionId: string, data: any) => {
+  return request.post(`/inspection/exceptions/${exceptionId}/create-event`, data);
+};
+
 export const getInspectionExceptions = (params?: any) => {
   return request.get('/inspection/exceptions', { params });
 };

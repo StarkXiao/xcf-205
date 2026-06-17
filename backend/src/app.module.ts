@@ -7,6 +7,7 @@ import { EventsModule } from './events/events.module';
 import { WorkOrdersModule } from './workorders/workorders.module';
 import { StatisticsModule } from './statistics/statistics.module';
 import { RolesModule } from './roles/roles.module';
+import { InspectionsModule } from './inspections/inspections.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { RolesModule } from './roles/roles.module';
     WorkOrdersModule,
     StatisticsModule,
     RolesModule,
+    InspectionsModule,
   ],
 })
 export class AppModule {}

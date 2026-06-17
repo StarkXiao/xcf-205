@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react';
 import { Form, Input, Select, Button, Card, Row, Col, Upload, message, Space, Divider, Alert } from 'antd';
 import { ArrowLeftOutlined, UploadOutlined, WarningOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { reportException, type Checkpoint, type InspectionTask, type InspectionException } from '../api/inspection';
-import { createEvent } from '../api/event';
+import { reportException, createEventFromException, type Checkpoint, type InspectionTask, type InspectionException } from '../api/inspection';
 import { useAuth } from '../context/AuthContext';
 
 const { TextArea } = Input;
@@ -89,22 +88,15 @@ const InspectionExceptionReport = () => {
   const handleCreateEvent = async (values: any, exceptionId: string) => {
     setCreatingEvent(true);
     try {
-      const eventData = {
+      const eventResult: any = await createEventFromException(exceptionId, {
         title: values.title,
         description: values.description,
         category: values.category,
         priority: values.priority,
         address: checkpoint?.address || values.address,
-        lng: checkpoint?.lng || values.lng || (121.4737 + Math.random() * 0.1 - 0.05),
-        lat: checkpoint?.lat || values.lat || (31.2304 + Math.random() * 0.1 - 0.05),
-        source: '巡检上报',
-        reporterId: user._id,
-        reporterName: user.realName,
-        reporterPhone: user.phone,
-        inspectionExceptionId: exceptionId,
-      };
-
-      const eventResult: any = await createEvent(eventData);
+        lng: checkpoint?.lng || values.lng,
+        lat: checkpoint?.lat || values.lat,
+      });
       setEventCreated(true);
       message.success('事件已自动生成，可前往事件列表查看');
       

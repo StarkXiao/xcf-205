@@ -81,6 +81,9 @@ export class Event {
 
   @Prop()
   remark: string;
+
+  @Prop({ type: Types.ObjectId, ref: 'InspectionException' })
+  inspectionExceptionId: Types.ObjectId;
 }
 
 export const EventSchema = SchemaFactory.createForClass(Event);
