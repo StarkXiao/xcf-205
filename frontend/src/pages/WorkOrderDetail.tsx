@@ -15,6 +15,8 @@ import {
   Row,
   Col,
   message,
+  InputNumber,
+  DatePicker,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -23,6 +25,9 @@ import {
   CloseCircleOutlined,
   UserOutlined,
   ExclamationCircleOutlined,
+  ClockCircleOutlined,
+  SwapOutlined,
+  AuditOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -35,6 +40,7 @@ import {
   assignWorkOrder,
 } from '../api/workorder';
 import { getUsersByRole } from '../api/user';
+import { submitApproval } from '../api/approval';
 import { useAuth } from '../context/AuthContext';
 import dayjs from 'dayjs';
 
@@ -181,6 +187,66 @@ const WorkOrderDetail = () => {
           });
           message.success('工单已关闭');
           break;
+        case 'extension': {
+          const extensionDays = values.extensionDays;
+          const newDeadline = workOrder.deadline
+            ? dayjs(workOrder.deadline).add(extensionDays, 'day').toISOString()
+            : dayjs().add(extensionDays, 'day').toISOString();
+          await submitApproval({
+            type: 'extension',
+            title: `延期申请 - ${workOrder.orderNo}`,
+            reason: values.reason,
+            relatedId: workOrder._id,
+            relatedNo: workOrder.orderNo,
+            applicantId: user._id,
+            applicantName: user.realName,
+            extraData: {
+              extensionDays,
+              newDeadline,
+              originalDeadline: workOrder.deadline,
+            },
+          });
+          message.success('延期申请已提交，等待审批');
+          break;
+        }
+        case 'reassign': {
+          const newHandler = handlers.find(h => h._id === values.newHandlerId);
+          await submitApproval({
+            type: 'reassign',
+            title: `改派申请 - ${workOrder.orderNo}`,
+            reason: values.reason,
+            relatedId: workOrder._id,
+            relatedNo: workOrder.orderNo,
+            applicantId: user._id,
+            applicantName: user.realName,
+            extraData: {
+              newHandlerId: values.newHandlerId,
+              newHandlerName: newHandler?.realName,
+              newHandlerDepartment: newHandler?.department,
+              originalHandlerId: workOrder.handlerId,
+              originalHandlerName: workOrder.handlerName,
+            },
+          });
+          message.success('改派申请已提交，等待审批');
+          break;
+        }
+        case 'close_reject': {
+          await submitApproval({
+            type: 'close_reject',
+            title: `关闭驳回申请 - ${workOrder.orderNo}`,
+            reason: values.reason,
+            relatedId: workOrder._id,
+            relatedNo: workOrder.orderNo,
+            applicantId: user._id,
+            applicantName: user.realName,
+            extraData: {
+              rejectReason: values.reason,
+              originalStatus: workOrder.status,
+            },
+          });
+          message.success('关闭驳回申请已提交，等待审批');
+          break;
+        }
       }
 
       setActionModal({ type: '', visible: false });
@@ -194,6 +260,9 @@ const WorkOrderDetail = () => {
   const renderActionButtons = () => {
     if (!workOrder) return null;
     const status = workOrder.status;
+    const canApplyExtension = ['assigned', 'processing'].includes(status) && workOrder.deadline;
+    const canApplyReassign = ['assigned', 'processing'].includes(status);
+    const canApplyCloseReject = ['verified'].includes(status);
 
     return (
       <Space>
@@ -222,6 +291,21 @@ const WorkOrderDetail = () => {
             关闭工单
           </Button>
         )}
+        {canApplyExtension && (
+          <Button icon={<ClockCircleOutlined />} onClick={() => handleAction('extension')}>
+            延期申请
+          </Button>
+        )}
+        {canApplyReassign && (
+          <Button icon={<SwapOutlined />} onClick={() => handleAction('reassign')}>
+            改派申请
+          </Button>
+        )}
+        {canApplyCloseReject && (
+          <Button danger icon={<AuditOutlined />} onClick={() => handleAction('close_reject')}>
+            关闭驳回
+          </Button>
+        )}
       </Space>
     );
   };
@@ -236,6 +320,9 @@ const WorkOrderDetail = () => {
       case 'complete': title = '处理完成'; break;
       case 'verify': title = '核查结果'; break;
       case 'close': title = '关闭工单'; break;
+      case 'extension': title = '延期申请'; break;
+      case 'reassign': title = '改派申请'; break;
+      case 'close_reject': title = '关闭驳回申请'; break;
     }
 
     return (
@@ -296,6 +383,62 @@ const WorkOrderDetail = () => {
             <Form.Item label="关闭原因" name="reason">
               <TextArea rows={3} placeholder="请填写关闭原因..." />
             </Form.Item>
+          )}
+
+          {type === 'extension' && (
+            <>
+              <Form.Item
+                label="延期天数"
+                name="extensionDays"
+                rules={[{ required: true, message: '请输入延期天数' }]}
+              >
+                <InputNumber min={1} max={90} style={{ width: '100%' }} placeholder="请输入延期天数" />
+              </Form.Item>
+              <Form.Item
+                label="延期原因"
+                name="reason"
+                rules={[{ required: true, message: '请填写延期原因' }]}
+              >
+                <TextArea rows={4} placeholder="请详细说明延期原因..." />
+              </Form.Item>
+            </>
+          )}
+
+          {type === 'reassign' && (
+            <>
+              <Form.Item
+                label="改派处理人"
+                name="newHandlerId"
+                rules={[{ required: true, message: '请选择改派处理人' }]}
+              >
+                <Select placeholder="请选择改派处理人员">
+                  {handlers.filter(h => h._id !== workOrder?.handlerId).map(h => (
+                    <Option key={h._id} value={h._id}>
+                      {h.realName} - {h.department}
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+              <Form.Item
+                label="改派原因"
+                name="reason"
+                rules={[{ required: true, message: '请填写改派原因' }]}
+              >
+                <TextArea rows={4} placeholder="请详细说明改派原因..." />
+              </Form.Item>
+            </>
+          )}
+
+          {type === 'close_reject' && (
+            <>
+              <Form.Item
+                label="驳回原因"
+                name="reason"
+                rules={[{ required: true, message: '请填写驳回原因' }]}
+              >
+                <TextArea rows={4} placeholder="请详细说明关闭驳回原因..." />
+              </Form.Item>
+            </>
           )}
 
           {type === 'start' && (

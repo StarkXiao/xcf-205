@@ -15,6 +15,7 @@ import {
   BellOutlined,
   BookOutlined,
   TrophyOutlined,
+  AuditOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useState } from 'react';
@@ -54,6 +55,15 @@ const MainLayout = () => {
       key: '/workorders',
       icon: <FileTextOutlined />,
       label: '工单流转',
+    },
+    {
+      key: 'approvals',
+      icon: <AuditOutlined />,
+      label: '审批管理',
+      children: [
+        { key: '/approvals', icon: <UnorderedListOutlined />, label: '审批列表' },
+        { key: '/approvals/config', icon: <SettingOutlined />, label: '审批流配置' },
+      ],
     },
     {
       key: 'inspection',
@@ -111,6 +121,9 @@ const MainLayout = () => {
     if (path.startsWith('/inspection')) {
       return ['/inspection', 'inspection'];
     }
+    if (path.startsWith('/approvals')) {
+      return [path, 'approvals'];
+    }
     if (path.startsWith('/system')) {
       return [path, 'system'];
     }
@@ -142,7 +155,7 @@ const MainLayout = () => {
           theme="dark"
           mode="inline"
           selectedKeys={getSelectedKeys()}
-          defaultOpenKeys={['events', 'inspection', 'system']}
+          defaultOpenKeys={['events', 'inspection', 'system', 'approvals']}
           items={menuItems}
           onClick={({ key }) => navigate(key)}
         />

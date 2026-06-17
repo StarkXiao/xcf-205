@@ -18,6 +18,9 @@ import InspectionExceptionReport from './pages/InspectionExceptionReport';
 import NotificationCenter from './components/NotificationCenter';
 import KnowledgeBase from './pages/KnowledgeBase';
 import DepartmentPerformance from './pages/DepartmentPerformance';
+import ApprovalList from './pages/ApprovalList';
+import ApprovalConfig from './pages/ApprovalConfig';
+import ApprovalDetail from './pages/ApprovalDetail';
 
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   const { isLoggedIn } = useAuth();
@@ -49,6 +52,9 @@ function App() {
               <Route path="system/roles" element={<RoleManage />} />
               <Route path="knowledge" element={<KnowledgeBase />} />
               <Route path="performance" element={<DepartmentPerformance />} />
+              <Route path="approvals" element={<ApprovalList />} />
+              <Route path="approvals/config" element={<ApprovalConfig />} />
+              <Route path="approvals/:id" element={<ApprovalDetail />} />
             </Route>
           </Routes>
         </Router>
