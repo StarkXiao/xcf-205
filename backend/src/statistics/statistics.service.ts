@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { Event, EventStatus, EventCategory } from '../schemas/event.schema';
+import { Event, EventStatus } from '../schemas/event.schema';
 import { WorkOrder, WorkOrderStatus } from '../schemas/workorder.schema';
 import { User } from '../schemas/user.schema';
 

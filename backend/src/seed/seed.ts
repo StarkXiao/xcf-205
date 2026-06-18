@@ -102,6 +102,16 @@ const knowledgeSchema = new Schema({
   isActive: { type: Boolean, default: true },
 }, { timestamps: true });
 
+const dictionarySchema = new Schema({
+  type: { type: String, required: true },
+  code: { type: String, required: true },
+  name: { type: String, required: true },
+  sort: { type: Number, default: 0 },
+  isActive: { type: Boolean, default: true },
+  color: String,
+  remark: String,
+}, { timestamps: true });
+
 async function seed() {
   console.log('开始初始化数据...');
   
@@ -115,10 +125,12 @@ async function seed() {
   const WorkOrderLog = model('WorkOrderLog', workOrderLogSchema);
   const Notification = model('Notification', notificationSchema);
   const Knowledge = model('Knowledge', knowledgeSchema);
+  const Dictionary = model('Dictionary', dictionarySchema);
 
-  await clearData(Role, User, Event, WorkOrder, WorkOrderLog, Notification, Knowledge);
+  await clearData(Role, User, Event, WorkOrder, WorkOrderLog, Notification, Knowledge, Dictionary);
   const roles = await seedRoles(Role);
   const users = await seedUsers(User, roles);
+  const dictionaries = await seedDictionaries(Dictionary);
   const events = await seedEvents(Event, users);
   const workOrders = await seedWorkOrders(WorkOrder, WorkOrderLog, events, users);
   const notifications = await seedNotifications(Notification, users, workOrders);
@@ -127,6 +139,7 @@ async function seed() {
   console.log('数据初始化完成！');
   console.log(`- 角色: ${roles.length} 个`);
   console.log(`- 用户: ${users.length} 个`);
+  console.log(`- 字典: ${dictionaries.length} 条`);
   console.log(`- 事件: ${events.length} 个`);
   console.log(`- 工单: ${workOrders.length} 个`);
   console.log(`- 通知: ${notifications.length} 条`);
@@ -135,7 +148,7 @@ async function seed() {
   process.exit(0);
 }
 
-async function clearData(Role: any, User: any, Event: any, WorkOrder: any, WorkOrderLog: any, Notification: any, Knowledge: any) {
+async function clearData(Role: any, User: any, Event: any, WorkOrder: any, WorkOrderLog: any, Notification: any, Knowledge: any, Dictionary: any) {
   console.log('清空现有数据...');
   await Role.deleteMany({});
   await User.deleteMany({});
@@ -144,6 +157,7 @@ async function clearData(Role: any, User: any, Event: any, WorkOrder: any, WorkO
   await WorkOrderLog.deleteMany({});
   await Notification.deleteMany({});
   await Knowledge.deleteMany({});
+  await Dictionary.deleteMany({});
   console.log('数据清空完成');
 }
 
@@ -186,6 +200,51 @@ async function seedRoles(Role: any) {
   const roles = await Role.create(rolesData);
   console.log(`创建了 ${roles.length} 个角色`);
   return roles;
+}
+
+async function seedDictionaries(Dictionary: any) {
+  console.log('创建字典数据...');
+  
+  const dictionariesData = [
+    { type: 'event_category', code: 'road', name: '道路设施', sort: 1, color: '#1890ff', remark: '道路、桥梁、隧道等市政设施问题' },
+    { type: 'event_category', code: 'sanitation', name: '环境卫生', sort: 2, color: '#52c41a', remark: '垃圾清运、保洁、污染等问题' },
+    { type: 'event_category', code: 'greening', name: '园林绿化', sort: 3, color: '#73d13d', remark: '树木、草坪、绿地等维护问题' },
+    { type: 'event_category', code: 'facility', name: '公共设施', sort: 4, color: '#faad14', remark: '路灯、健身器材、座椅等设施问题' },
+    { type: 'event_category', code: 'noise', name: '噪声污染', sort: 5, color: '#f5222d', remark: '施工噪音、商业噪音等问题' },
+    { type: 'event_category', code: 'water', name: '供排水', sort: 6, color: '#13c2c2', remark: '供水、排水、管道等问题' },
+    { type: 'event_category', code: 'electricity', name: '电力设施', sort: 7, color: '#fa8c16', remark: '供电线路、配电箱等问题' },
+    { type: 'event_category', code: 'gas', name: '燃气设施', sort: 8, color: '#eb2f96', remark: '燃气管线、设施等问题' },
+    { type: 'event_category', code: 'other', name: '其他', sort: 99, color: '#8c8c8c', remark: '其他未分类问题' },
+    
+    { type: 'event_priority', code: 'low', name: '低', sort: 1, color: '#52c41a', remark: '不影响正常生活，可计划内安排' },
+    { type: 'event_priority', code: 'medium', name: '中', sort: 2, color: '#1890ff', remark: '对生活有一定影响，需尽快处理' },
+    { type: 'event_priority', code: 'high', name: '高', sort: 3, color: '#fa8c16', remark: '影响较大，需优先处理' },
+    { type: 'event_priority', code: 'urgent', name: '紧急', sort: 4, color: '#f5222d', remark: '可能造成人员伤亡或重大损失' },
+    
+    { type: 'department', code: 'municipal', name: '市政工程部门', sort: 1, color: '#1890ff', remark: '负责道路、桥梁、排水等市政设施维护' },
+    { type: 'department', code: 'sanitation', name: '环境卫生部门', sort: 2, color: '#52c41a', remark: '负责垃圾清运、道路保洁等' },
+    { type: 'department', code: 'gardening', name: '园林绿化部门', sort: 3, color: '#73d13d', remark: '负责公园、绿地、行道树等养护' },
+    { type: 'department', code: 'traffic', name: '交通管理部门', sort: 4, color: '#faad14', remark: '负责交通设施维护、交通疏导等' },
+    { type: 'department', code: 'lawenforcement', name: '城管执法部门', sort: 5, color: '#f5222d', remark: '负责违法建设、占道经营等执法' },
+    { type: 'department', code: 'emergency', name: '应急管理部门', sort: 6, color: '#eb2f96', remark: '负责突发事件协调指挥' },
+    { type: 'department', code: 'water', name: '水务部门', sort: 7, color: '#13c2c2', remark: '负责供水、排水设施管理' },
+    { type: 'department', code: 'power', name: '电力部门', sort: 8, color: '#fa8c16', remark: '负责供电设施维护' },
+    { type: 'department', code: 'gas', name: '燃气部门', sort: 9, color: '#eb2f96', remark: '负责燃气设施维护' },
+    { type: 'department', code: 'info', name: '信息中心', sort: 10, color: '#722ed1', remark: '负责系统维护和数据管理' },
+    { type: 'department', code: 'command', name: '指挥中心', sort: 11, color: '#1890ff', remark: '负责事件受理和工单分派' },
+    { type: 'department', code: 'quality', name: '质检部', sort: 12, color: '#faad14', remark: '负责处理结果核查验收' },
+    
+    { type: 'source_channel', code: 'citizen', name: '市民上报', sort: 1, color: '#1890ff', remark: '市民通过APP或热线上报' },
+    { type: 'source_channel', code: 'staff', name: '工作人员上报', sort: 2, color: '#52c41a', remark: '巡查人员或工作人员发现上报' },
+    { type: 'source_channel', code: 'hotline', name: '12345热线', sort: 3, color: '#faad14', remark: '政务服务热线转办' },
+    { type: 'source_channel', code: 'inspection', name: '巡检发现', sort: 4, color: '#722ed1', remark: '日常巡检任务发现' },
+    { type: 'source_channel', code: 'monitoring', name: '监控发现', sort: 5, color: '#13c2c2', remark: '视频监控自动识别发现' },
+    { type: 'source_channel', code: 'other', name: '其他渠道', sort: 99, color: '#8c8c8c', remark: '其他来源渠道' },
+  ];
+
+  const dictionaries = await Dictionary.create(dictionariesData);
+  console.log(`创建了 ${dictionaries.length} 条字典数据`);
+  return dictionaries;
 }
 
 async function seedUsers(User: any, roles: any[]) {

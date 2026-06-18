@@ -13,6 +13,7 @@ import { KnowledgeModule } from './knowledge/knowledge.module';
 import { PerformanceModule } from './performance/performance.module';
 import { ApprovalsModule } from './approvals/approvals.module';
 import { AttachmentsModule } from './attachments/attachments.module';
+import { DictionariesModule } from './dictionaries/dictionaries.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { AttachmentsModule } from './attachments/attachments.module';
     PerformanceModule,
     ApprovalsModule,
     AttachmentsModule,
+    DictionariesModule,
   ],
 })
 export class AppModule {}

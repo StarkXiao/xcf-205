@@ -22,6 +22,7 @@ import ApprovalList from './pages/ApprovalList';
 import ApprovalConfig from './pages/ApprovalConfig';
 import ApprovalDetail from './pages/ApprovalDetail';
 import AttachmentList from './pages/AttachmentList';
+import DictionaryConfig from './pages/DictionaryConfig';
 
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   const { isLoggedIn } = useAuth();
@@ -51,6 +52,7 @@ function App() {
               <Route path="inspection/tasks/:id/exception" element={<InspectionExceptionReport />} />
               <Route path="system/users" element={<UserManage />} />
               <Route path="system/roles" element={<RoleManage />} />
+              <Route path="system/dictionaries" element={<DictionaryConfig />} />
               <Route path="knowledge" element={<KnowledgeBase />} />
               <Route path="performance" element={<DepartmentPerformance />} />
               <Route path="approvals" element={<ApprovalList />} />

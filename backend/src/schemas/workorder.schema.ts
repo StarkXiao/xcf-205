@@ -12,13 +12,6 @@ export enum WorkOrderStatus {
   CLOSED = 'closed',
 }
 
-export enum WorkOrderPriority {
-  LOW = 'low',
-  MEDIUM = 'medium',
-  HIGH = 'high',
-  URGENT = 'urgent',
-}
-
 @Schema({ timestamps: true })
 export class WorkOrder {
   @Prop({ required: true, unique: true })
@@ -33,8 +26,8 @@ export class WorkOrder {
   @Prop()
   description: string;
 
-  @Prop({ type: String, enum: WorkOrderPriority, default: WorkOrderPriority.MEDIUM })
-  priority: WorkOrderPriority;
+  @Prop({ default: 'medium' })
+  priority: string;
 
   @Prop({ type: String, enum: WorkOrderStatus, default: WorkOrderStatus.PENDING })
   status: WorkOrderStatus;

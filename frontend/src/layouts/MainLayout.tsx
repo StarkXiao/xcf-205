@@ -17,6 +17,7 @@ import {
   TrophyOutlined,
   AuditOutlined,
   PaperClipOutlined,
+  DatabaseOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useState } from 'react';
@@ -96,6 +97,7 @@ const MainLayout = () => {
       children: [
         { key: '/system/users', icon: <TeamOutlined />, label: '用户管理' },
         { key: '/system/roles', icon: <SafetyOutlined />, label: '角色管理' },
+        { key: '/system/dictionaries', icon: <DatabaseOutlined />, label: '字典配置' },
       ],
     },
   ];

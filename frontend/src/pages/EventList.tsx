@@ -9,6 +9,7 @@ import { useAuth } from '../context/AuthContext';
 import type { Attachment } from '../types/attachment';
 import { formatFileSize, isImage, getAttachmentPreviewUrl, ATTACHMENT_TYPE_COLORS, ATTACHMENT_TYPE_LABELS } from '../types/attachment';
 import { getAttachmentsByRelated } from '../api/attachment';
+import { getDictionariesByType } from '../api/dictionary';
 import AttachmentPreview from '../components/AttachmentPreview';
 import dayjs from 'dayjs';
 
@@ -25,6 +26,9 @@ const EventList = () => {
   const [currentEvent, setCurrentEvent] = useState<any>(null);
   const [handlers, setHandlers] = useState<any[]>([]);
   const [dispatchForm] = Form.useForm();
+  const [categoryOptions, setCategoryOptions] = useState<any[]>([]);
+  const [priorityOptions, setPriorityOptions] = useState<any[]>([]);
+  const [sourceOptions, setSourceOptions] = useState<any[]>([]);
 
   const [eventAttachments, setEventAttachments] = useState<Attachment[]>([]);
   const [previewModal, setPreviewModal] = useState(false);
@@ -34,9 +38,28 @@ const EventList = () => {
   const { user } = useAuth();
 
   useEffect(() => {
-    loadData();
+    loadDictionaries();
     loadHandlers();
+  }, []);
+
+  useEffect(() => {
+    loadData();
   }, [pagination.current, pagination.pageSize, filters]);
+
+  const loadDictionaries = async () => {
+    try {
+      const [categories, priorities, sources] = await Promise.all([
+        getDictionariesByType('event_category'),
+        getDictionariesByType('event_priority'),
+        getDictionariesByType('source_channel'),
+      ]);
+      setCategoryOptions(categories as any[]);
+      setPriorityOptions(priorities as any[]);
+      setSourceOptions(sources as any[]);
+    } catch (error) {
+      console.error('加载字典数据失败:', error);
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -76,29 +99,21 @@ const EventList = () => {
   };
 
   const getPriorityTag = (priority: string) => {
-    const priorityMap: Record<string, { color: string; text: string }> = {
-      low: { color: 'green', text: '低' },
-      medium: { color: 'blue', text: '中' },
-      high: { color: 'orange', text: '高' },
-      urgent: { color: 'red', text: '紧急' },
-    };
-    const info = priorityMap[priority] || { color: 'default', text: priority };
-    return <Tag color={info.color}>{info.text}</Tag>;
+    const item = priorityOptions.find(p => p.code === priority);
+    if (item) {
+      return <Tag color={item.color || 'default'}>{item.name}</Tag>;
+    }
+    return <Tag color="default">{priority}</Tag>;
   };
 
   const getCategoryName = (category: string) => {
-    const categoryMap: Record<string, string> = {
-      road: '道路设施',
-      sanitation: '环境卫生',
-      greening: '园林绿化',
-      facility: '公共设施',
-      noise: '噪声污染',
-      water: '供排水',
-      electricity: '电力设施',
-      gas: '燃气设施',
-      other: '其他',
-    };
-    return categoryMap[category] || category;
+    const item = categoryOptions.find(c => c.code === category);
+    return item ? item.name : category;
+  };
+
+  const getSourceName = (source: string) => {
+    const item = sourceOptions.find(s => s.code === source);
+    return item ? item.name : source;
   };
 
   const handleViewDetail = async (record: any) => {
@@ -258,18 +273,13 @@ const EventList = () => {
           </Select>
           <Select
             placeholder="分类"
-            style={{ width: 120 }}
+            style={{ width: 140 }}
             allowClear
             onChange={(value) => setFilters(f => ({ ...f, category: value }))}
           >
-            <Option value="road">道路设施</Option>
-            <Option value="sanitation">环境卫生</Option>
-            <Option value="greening">园林绿化</Option>
-            <Option value="facility">公共设施</Option>
-            <Option value="water">供排水</Option>
-            <Option value="electricity">电力设施</Option>
-            <Option value="gas">燃气设施</Option>
-            <Option value="other">其他</Option>
+            {categoryOptions.map(item => (
+              <Option key={item.code} value={item.code}>{item.name}</Option>
+            ))}
           </Select>
           <Button type="primary" onClick={handleSearch} icon={<SearchOutlined />}>
             查询
@@ -312,7 +322,7 @@ const EventList = () => {
               <Descriptions.Item label="上报人">{currentEvent.reporterName}</Descriptions.Item>
               <Descriptions.Item label="联系电话">{currentEvent.reporterPhone}</Descriptions.Item>
               <Descriptions.Item label="上报时间">{dayjs(currentEvent.createdAt).format('YYYY-MM-DD HH:mm:ss')}</Descriptions.Item>
-              <Descriptions.Item label="来源">{currentEvent.source}</Descriptions.Item>
+              <Descriptions.Item label="来源">{getSourceName(currentEvent.source)}</Descriptions.Item>
               <Descriptions.Item label="处理人">{currentEvent.handlerName || '-'}</Descriptions.Item>
               <Descriptions.Item label="详细描述" span={2}>{currentEvent.description}</Descriptions.Item>
             </Descriptions>

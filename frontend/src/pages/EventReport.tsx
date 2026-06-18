@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import type { Attachment } from '../types/attachment';
 import { ATTACHMENT_TYPE_LABELS, ATTACHMENT_TYPE_COLORS, formatFileSize, isImage, getAttachmentPreviewUrl } from '../types/attachment';
 import { getAttachmentsByRelated, updateAttachment } from '../api/attachment';
+import { getDictionariesByType } from '../api/dictionary';
 import AttachmentUpload from '../components/AttachmentUpload';
 import AttachmentPreview from '../components/AttachmentPreview';
 
@@ -21,6 +22,9 @@ const EventReport = () => {
   const [previewModal, setPreviewModal] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [uploadModal, setUploadModal] = useState(false);
+  const [categoryOptions, setCategoryOptions] = useState<any[]>([]);
+  const [priorityOptions, setPriorityOptions] = useState<any[]>([]);
+  const [sourceOptions, setSourceOptions] = useState<any[]>([]);
   const navigate = useNavigate();
   const { user, isLoggedIn } = useAuth();
 
@@ -32,6 +36,33 @@ const EventReport = () => {
       });
     }
   }, [isLoggedIn, user, form]);
+
+  useEffect(() => {
+    loadDictionaries();
+  }, []);
+
+  const loadDictionaries = async () => {
+    try {
+      const [categories, priorities, sources] = await Promise.all([
+        getDictionariesByType('event_category'),
+        getDictionariesByType('event_priority'),
+        getDictionariesByType('source_channel'),
+      ]);
+      setCategoryOptions(categories as any[]);
+      setPriorityOptions(priorities as any[]);
+      setSourceOptions(sources as any[]);
+      
+      if (categories.length > 0) {
+        form.setFieldsValue({ category: categories[0].code });
+      }
+      if (priorities.length > 0) {
+        const defaultPriority = priorities.find((p: any) => p.code === 'medium') || priorities[0];
+        form.setFieldsValue({ priority: defaultPriority.code });
+      }
+    } catch (error) {
+      console.error('加载字典数据失败:', error);
+    }
+  };
 
   useEffect(() => {
     if (createdEventId) {
@@ -49,33 +80,17 @@ const EventReport = () => {
     }
   };
 
-  const categoryOptions = [
-    { value: 'road', label: '道路设施' },
-    { value: 'sanitation', label: '环境卫生' },
-    { value: 'greening', label: '园林绿化' },
-    { value: 'facility', label: '公共设施' },
-    { value: 'noise', label: '噪声污染' },
-    { value: 'water', label: '供排水' },
-    { value: 'electricity', label: '电力设施' },
-    { value: 'gas', label: '燃气设施' },
-    { value: 'other', label: '其他' },
-  ];
-
-  const priorityOptions = [
-    { value: 'low', label: '低' },
-    { value: 'medium', label: '中' },
-    { value: 'high', label: '高' },
-    { value: 'urgent', label: '紧急' },
-  ];
-
   const handleSubmit = async (values: any) => {
     setLoading(true);
     try {
+      const sourceItem = sourceOptions.find((s: any) => 
+        isLoggedIn ? s.code === 'staff' : s.code === 'citizen'
+      );
       const data = {
         ...values,
         lng: 121.4737 + Math.random() * 0.1 - 0.05,
         lat: 31.2304 + Math.random() * 0.1 - 0.05,
-        source: isLoggedIn ? '工作人员上报' : '市民上报',
+        source: sourceItem ? sourceItem.code : (isLoggedIn ? 'staff' : 'citizen'),
         reporterId: user?._id,
       };
       const result: any = await createEvent(data);
@@ -137,7 +152,6 @@ const EventReport = () => {
           form={form}
           layout="vertical"
           onFinish={handleSubmit}
-          initialValues={{ priority: 'medium', category: 'road' }}
         >
           <Row gutter={16}>
             <Col span={12}>
@@ -157,7 +171,22 @@ const EventReport = () => {
               >
                 <Select placeholder="请选择事件分类">
                   {categoryOptions.map(item => (
-                    <Option key={item.value} value={item.value}>{item.label}</Option>
+                    <Option key={item.code} value={item.code}>
+                      <Space>
+                        {item.color && (
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              width: 10,
+                              height: 10,
+                              borderRadius: '50%',
+                              backgroundColor: item.color,
+                            }}
+                          />
+                        )}
+                        {item.name}
+                      </Space>
+                    </Option>
                   ))}
                 </Select>
               </Form.Item>
@@ -173,7 +202,22 @@ const EventReport = () => {
               >
                 <Select placeholder="请选择优先级">
                   {priorityOptions.map(item => (
-                    <Option key={item.value} value={item.value}>{item.label}</Option>
+                    <Option key={item.code} value={item.code}>
+                      <Space>
+                        {item.color && (
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              width: 10,
+                              height: 10,
+                              borderRadius: '50%',
+                              backgroundColor: item.color,
+                            }}
+                          />
+                        )}
+                        {item.name}
+                      </Space>
+                    </Option>
                   ))}
                 </Select>
               </Form.Item>

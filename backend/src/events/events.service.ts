@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { Event, EventDocument, EventStatus, EventCategory } from '../schemas/event.schema';
+import { Event, EventDocument, EventStatus } from '../schemas/event.schema';
 
 @Injectable()
 export class EventsService {

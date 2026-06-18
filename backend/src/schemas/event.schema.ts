@@ -10,25 +10,6 @@ export enum EventStatus {
   CLOSED = 'closed',
 }
 
-export enum EventPriority {
-  LOW = 'low',
-  MEDIUM = 'medium',
-  HIGH = 'high',
-  URGENT = 'urgent',
-}
-
-export enum EventCategory {
-  ROAD = 'road',
-  SANITATION = 'sanitation',
-  GREENING = 'greening',
-  FACILITY = 'facility',
-  NOISE = 'noise',
-  WATER = 'water',
-  ELECTRICITY = 'electricity',
-  GAS = 'gas',
-  OTHER = 'other',
-}
-
 @Schema({ timestamps: true })
 export class Event {
   @Prop({ required: true })
@@ -37,11 +18,11 @@ export class Event {
   @Prop({ required: true })
   description: string;
 
-  @Prop({ type: String, enum: EventCategory, required: true })
-  category: EventCategory;
+  @Prop({ required: true })
+  category: string;
 
-  @Prop({ type: String, enum: EventPriority, default: EventPriority.MEDIUM })
-  priority: EventPriority;
+  @Prop({ default: 'medium' })
+  priority: string;
 
   @Prop({ type: String, enum: EventStatus, default: EventStatus.PENDING })
   status: EventStatus;
