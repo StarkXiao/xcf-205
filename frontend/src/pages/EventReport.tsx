@@ -1,9 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Form, Input, Select, Button, Card, message, Row, Col, Upload } from 'antd';
-import { UploadOutlined } from '@ant-design/icons';
+import { Form, Input, Select, Button, Card, message, Row, Col, Space, Image, Tag, Tooltip, Modal } from 'antd';
+import { PlusOutlined, EyeOutlined, DeleteOutlined, FileImageOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { createEvent } from '../api/event';
 import { useAuth } from '../context/AuthContext';
+import type { Attachment } from '../types/attachment';
+import { ATTACHMENT_TYPE_LABELS, ATTACHMENT_TYPE_COLORS, formatFileSize, isImage, getAttachmentPreviewUrl } from '../types/attachment';
+import { getAttachmentsByRelated, updateAttachment } from '../api/attachment';
+import AttachmentUpload from '../components/AttachmentUpload';
+import AttachmentPreview from '../components/AttachmentPreview';
 
 const { TextArea } = Input;
 const { Option } = Select;
@@ -11,6 +16,11 @@ const { Option } = Select;
 const EventReport = () => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
+  const [createdEventId, setCreatedEventId] = useState<string | null>(null);
+  const [eventAttachments, setEventAttachments] = useState<Attachment[]>([]);
+  const [previewModal, setPreviewModal] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState(0);
+  const [uploadModal, setUploadModal] = useState(false);
   const navigate = useNavigate();
   const { user, isLoggedIn } = useAuth();
 
@@ -22,6 +32,22 @@ const EventReport = () => {
       });
     }
   }, [isLoggedIn, user, form]);
+
+  useEffect(() => {
+    if (createdEventId) {
+      loadAttachments();
+    }
+  }, [createdEventId]);
+
+  const loadAttachments = async () => {
+    if (!createdEventId) return;
+    try {
+      const data: any = await getAttachmentsByRelated(createdEventId, 'Event', 'event_image');
+      setEventAttachments(data);
+    } catch (error) {
+      console.error('加载附件失败:', error);
+    }
+  };
 
   const categoryOptions = [
     { value: 'road', label: '道路设施' },
@@ -52,7 +78,8 @@ const EventReport = () => {
         source: isLoggedIn ? '工作人员上报' : '市民上报',
         reporterId: user?._id,
       };
-      await createEvent(data);
+      const result: any = await createEvent(data);
+      setCreatedEventId(result._id);
       message.success(isLoggedIn ? '事件上报成功，可前往事件列表派单' : '事件上报成功，感谢您的反馈！');
       if (isLoggedIn) {
         navigate('/events/list');
@@ -66,11 +93,43 @@ const EventReport = () => {
     }
   };
 
+  const handleUploadSuccess = async (attachments: any[]) => {
+    if (createdEventId && attachments.length > 0) {
+      await Promise.all(
+        attachments.map((att) =>
+          updateAttachment(att._id, {
+            type: 'event_image',
+          })
+        )
+      );
+      loadAttachments();
+    }
+    setUploadModal(false);
+  };
+
+  const handlePreview = (index: number) => {
+    setPreviewIndex(index);
+    setPreviewModal(true);
+  };
+
+  const handleDeleteAttachment = async (id: string) => {
+    try {
+      await updateAttachment(id, { type: 'other' });
+      message.success('已从事件移除');
+      loadAttachments();
+    } catch (error: any) {
+      message.error(error.response?.data?.message || '移除失败');
+    }
+  };
+
   return (
     <div className="page-container">
       <div className="page-header">
         <div className="page-title">事件上报</div>
-        <Button onClick={() => navigate('/events/list')}>查看列表</Button>
+        <Space>
+          <Button onClick={() => navigate('/events/list')}>查看列表</Button>
+          <Button onClick={() => navigate('/attachments')}>附件中心</Button>
+        </Space>
       </div>
 
       <Card title="上报信息">
@@ -151,19 +210,9 @@ const EventReport = () => {
             </Col>
           </Row>
 
-          <Form.Item label="现场照片">
-            <Upload
-              listType="picture"
-              maxCount={5}
-              beforeUpload={() => false}
-            >
-              <Button icon={<UploadOutlined />}>上传照片</Button>
-            </Upload>
-          </Form.Item>
-
           <Form.Item>
             <Button type="primary" htmlType="submit" loading={loading} size="large">
-              提交上报
+              {createdEventId ? '继续补充信息' : '提交上报'}
             </Button>
             <Button style={{ marginLeft: 16 }} onClick={() => form.resetFields()}>
               重置
@@ -171,6 +220,142 @@ const EventReport = () => {
           </Form.Item>
         </Form>
       </Card>
+
+      {createdEventId && (
+        <Card
+          title={
+            <Space>
+              <FileImageOutlined />
+              <span>现场照片</span>
+              <Tag color={ATTACHMENT_TYPE_COLORS.event_image}>
+                {ATTACHMENT_TYPE_LABELS.event_image}
+              </Tag>
+              <span style={{ color: '#999', fontSize: 12 }}>已上传 {eventAttachments.length} 张</span>
+            </Space>
+          }
+          style={{ marginTop: 16 }}
+          extra={
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => setUploadModal(true)}
+            >
+              添加照片
+            </Button>
+          }
+        >
+          {eventAttachments.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
+              <FileImageOutlined style={{ fontSize: 48, marginBottom: 12 }} />
+              <p>暂无现场照片，点击右上角按钮上传</p>
+            </div>
+          ) : (
+            <Row gutter={[16, 16]}>
+              {eventAttachments.map((att, index) => (
+                <Col xs={24} sm={12} md={8} lg={6} key={att._id}>
+                  <div style={{
+                    position: 'relative',
+                    border: '1px solid #eee',
+                    borderRadius: 4,
+                    overflow: 'hidden',
+                  }}>
+                    <div
+                      style={{
+                        height: 140,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: '#f5f5f5',
+                        cursor: 'pointer',
+                      }}
+                      onClick={() => handlePreview(index)}
+                    >
+                      {isImage(att.mimeType) ? (
+                        <Image
+                          src={getAttachmentPreviewUrl(att._id)}
+                          alt={att.originalName}
+                          preview={false}
+                          style={{ width: '100%', height: 140, objectFit: 'cover' }}
+                        />
+                      ) : (
+                        <FileImageOutlined style={{ fontSize: 48, color: '#999' }} />
+                      )}
+                    </div>
+                    <div style={{
+                      padding: '8px 12px',
+                      background: '#fafafa',
+                      borderTop: '1px solid #eee',
+                    }}>
+                      <div style={{
+                        fontSize: 12,
+                        color: '#333',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        marginBottom: 4,
+                      }} title={att.originalName}>
+                        {att.originalName}
+                      </div>
+                      <Space size={4} style={{ fontSize: 11, color: '#999' }}>
+                        <span>{formatFileSize(att.fileSize)}</span>
+                        <Space style={{ marginLeft: 'auto' }}>
+                          <Tooltip title="预览">
+                            <Button
+                              type="text"
+                              size="small"
+                              icon={<EyeOutlined />}
+                              onClick={() => handlePreview(index)}
+                              style={{ padding: '0 4px', height: 'auto' }}
+                            />
+                          </Tooltip>
+                          <Tooltip title="移除">
+                            <Button
+                              type="text"
+                              size="small"
+                              danger
+                              icon={<DeleteOutlined />}
+                              onClick={() => handleDeleteAttachment(att._id)}
+                              style={{ padding: '0 4px', height: 'auto' }}
+                            />
+                          </Tooltip>
+                        </Space>
+                      </Space>
+                    </div>
+                  </div>
+                </Col>
+              ))}
+            </Row>
+          )}
+        </Card>
+      )}
+
+      <AttachmentPreview
+        open={previewModal}
+        attachments={eventAttachments}
+        currentIndex={previewIndex}
+        onClose={() => setPreviewModal(false)}
+      />
+
+      <Modal
+        title="上传事件照片"
+        open={uploadModal}
+        onCancel={() => setUploadModal(false)}
+        footer={null}
+        width={600}
+        destroyOnClose
+      >
+        <AttachmentUpload
+          mode="multiple"
+          defaultType="event_image"
+          showTypeSelect={false}
+          showForm={false}
+          relatedId={createdEventId!}
+          relatedModel="Event"
+          onUploadSuccess={handleUploadSuccess}
+          buttonText="上传照片"
+          accept="image/*"
+        />
+      </Modal>
     </div>
   );
 };

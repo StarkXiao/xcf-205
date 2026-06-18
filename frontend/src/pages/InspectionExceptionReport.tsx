@@ -1,9 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Form, Input, Select, Button, Card, Row, Col, Upload, message, Space, Divider, Alert } from 'antd';
-import { ArrowLeftOutlined, UploadOutlined, WarningOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { Form, Input, Select, Button, Card, Row, Col, message, Space, Divider, Alert, Image, Tag, Tooltip, Empty, Modal } from 'antd';
+import { ArrowLeftOutlined, WarningOutlined, InfoCircleOutlined, PlusOutlined, EyeOutlined, DeleteOutlined, FileImageOutlined, FolderOutlined } from '@ant-design/icons';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { reportException, createEventFromException, type Checkpoint, type InspectionTask, type InspectionException } from '../api/inspection';
 import { useAuth } from '../context/AuthContext';
+import type { Attachment } from '../types/attachment';
+import { ATTACHMENT_TYPE_LABELS, ATTACHMENT_TYPE_COLORS, formatFileSize, isImage, getAttachmentPreviewUrl } from '../types/attachment';
+import { getAttachmentsByRelated, updateAttachment } from '../api/attachment';
+import AttachmentUpload from '../components/AttachmentUpload';
+import AttachmentPreview from '../components/AttachmentPreview';
 
 const { TextArea } = Input;
 const { Option } = Select;
@@ -16,6 +21,12 @@ const InspectionExceptionReport = () => {
   const [task, setTask] = useState<InspectionTask | null>(null);
   const [exceptionId, setExceptionId] = useState<string | null>(null);
   const [eventCreated, setEventCreated] = useState(false);
+
+  const [exceptionAttachments, setExceptionAttachments] = useState<Attachment[]>([]);
+  const [previewModal, setPreviewModal] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState(0);
+  const [uploadModal, setUploadModal] = useState(false);
+
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
@@ -31,6 +42,22 @@ const InspectionExceptionReport = () => {
       }
     }
   }, [location]);
+
+  useEffect(() => {
+    if (exceptionId) {
+      loadAttachments();
+    }
+  }, [exceptionId]);
+
+  const loadAttachments = async () => {
+    if (!exceptionId) return;
+    try {
+      const data: any = await getAttachmentsByRelated(exceptionId, 'InspectionException', 'inspection_material');
+      setExceptionAttachments(data);
+    } catch (error) {
+      console.error('加载附件失败:', error);
+    }
+  };
 
   const categoryOptions = [
     { value: 'road', label: '道路设施' },
@@ -74,7 +101,7 @@ const InspectionExceptionReport = () => {
       const result: any = await reportException(exceptionData);
       setExceptionId(result._id);
       message.success('异常上报成功');
-      
+
       if (values.autoCreateEvent) {
         await handleCreateEvent(values, result._id);
       }
@@ -99,7 +126,7 @@ const InspectionExceptionReport = () => {
       });
       setEventCreated(true);
       message.success('事件已自动生成，可前往事件列表查看');
-      
+
       setTimeout(() => {
         if (id) {
           navigate(`/inspection/tasks/${id}/checkin`);
@@ -122,14 +149,48 @@ const InspectionExceptionReport = () => {
     }
   };
 
+  const handleUploadSuccess = async (attachments: any[]) => {
+    if (exceptionId && attachments.length > 0) {
+      await Promise.all(
+        attachments.map((att) =>
+          updateAttachment(att._id, {
+            type: 'inspection_material',
+          })
+        )
+      );
+      loadAttachments();
+    }
+    setUploadModal(false);
+  };
+
+  const handlePreview = (index: number) => {
+    setPreviewIndex(index);
+    setPreviewModal(true);
+  };
+
+  const handleRemoveAttachment = async (attId: string) => {
+    try {
+      await updateAttachment(attId, { type: 'other' });
+      message.success('已移除');
+      loadAttachments();
+    } catch (error: any) {
+      message.error(error.response?.data?.message || '移除失败');
+    }
+  };
+
   return (
     <div className="page-container">
       <div className="page-header">
         <div className="page-title">
-          <Button icon={<ArrowLeftOutlined />} onClick={handleBackToCheckin} style={{ marginRight: 16 }} />
-          异常上报
+          <Space>
+            <Button icon={<ArrowLeftOutlined />} onClick={handleBackToCheckin} />
+            <span>异常上报</span>
+          </Space>
         </div>
         <Space>
+          <Button onClick={() => navigate('/attachments')}>
+            <FolderOutlined /> 附件中心
+          </Button>
           <Button onClick={handleBackToCheckin}>取消</Button>
         </Space>
       </div>
@@ -145,7 +206,7 @@ const InspectionExceptionReport = () => {
       )}
 
       <Row gutter={16}>
-        <Col span={16}>
+        <Col xs={24} lg={16}>
           <Card title="异常信息" loading={loading || creatingEvent}>
             {checkpoint && (
               <Alert
@@ -217,18 +278,12 @@ const InspectionExceptionReport = () => {
 
                   <Row gutter={16}>
                     <Col span={12}>
-                      <Form.Item
-                        label="经度"
-                        name="lng"
-                      >
+                      <Form.Item label="经度" name="lng">
                         <Input type="number" step="0.0001" placeholder="请输入经度（可选）" />
                       </Form.Item>
                     </Col>
                     <Col span={12}>
-                      <Form.Item
-                        label="纬度"
-                        name="lat"
-                      >
+                      <Form.Item label="纬度" name="lat">
                         <Input type="number" step="0.0001" placeholder="请输入纬度（可选）" />
                       </Form.Item>
                     </Col>
@@ -244,37 +299,6 @@ const InspectionExceptionReport = () => {
                 <TextArea rows={5} placeholder="请详细描述异常情况，包括问题现象、影响范围等" maxLength={500} />
               </Form.Item>
 
-              <Form.Item label="现场照片">
-                <Upload
-                  listType="picture"
-                  maxCount={5}
-                  beforeUpload={() => false}
-                >
-                  <Button icon={<UploadOutlined />}>上传照片</Button>
-                </Upload>
-              </Form.Item>
-
-              <Divider />
-
-              <Alert
-                message="联动事件生成"
-                description="上报异常后可自动生成事件工单，进入事件处理流程"
-                type="warning"
-                showIcon
-                icon={<WarningOutlined />}
-                style={{ marginBottom: 16 }}
-              />
-
-              <Form.Item
-                name="autoCreateEvent"
-                valuePropName="checked"
-              >
-                <Select>
-                  <Option value={true}>上报后自动生成事件</Option>
-                  <Option value={false}>仅上报异常，暂不生成事件</Option>
-                </Select>
-              </Form.Item>
-
               <Form.Item>
                 <Space>
                   <Button type="primary" htmlType="submit" loading={loading || creatingEvent} size="large">
@@ -287,9 +311,116 @@ const InspectionExceptionReport = () => {
               </Form.Item>
             </Form>
           </Card>
+
+          {exceptionId && (
+            <Card
+              title={
+                <Space>
+                  <FileImageOutlined />
+                  <span>核查材料/现场照片</span>
+                  <Tag color={ATTACHMENT_TYPE_COLORS.inspection_material}>
+                    {ATTACHMENT_TYPE_LABELS.inspection_material}
+                  </Tag>
+                  <span style={{ color: '#999', fontSize: 12 }}>已上传 {exceptionAttachments.length} 份</span>
+                </Space>
+              }
+              style={{ marginTop: 16 }}
+              extra={
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={() => setUploadModal(true)}
+                  size="small"
+                >
+                  添加材料
+                </Button>
+              }
+            >
+              {exceptionAttachments.length === 0 ? (
+                <Empty
+                  description="暂无核查材料，点击右上角按钮上传"
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                />
+              ) : (
+                <Row gutter={[16, 16]}>
+                  {exceptionAttachments.map((att, index) => (
+                    <Col xs={24} sm={12} md={8} lg={6} key={att._id}>
+                      <div style={{
+                        border: '1px solid #eee',
+                        borderRadius: 4,
+                        overflow: 'hidden',
+                      }}>
+                        <div
+                          style={{
+                            height: 140,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            background: '#f5f5f5',
+                            cursor: 'pointer',
+                          }}
+                          onClick={() => handlePreview(index)}
+                        >
+                          {isImage(att.mimeType) ? (
+                            <Image
+                              src={getAttachmentPreviewUrl(att._id)}
+                              alt={att.originalName}
+                              preview={false}
+                              style={{ width: '100%', height: 140, objectFit: 'cover' }}
+                            />
+                          ) : (
+                            <FileImageOutlined style={{ fontSize: 48, color: '#999' }} />
+                          )}
+                        </div>
+                        <div style={{
+                          padding: '8px 12px',
+                          background: '#fafafa',
+                          borderTop: '1px solid #eee',
+                        }}>
+                          <div style={{
+                            fontSize: 12,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            marginBottom: 4,
+                          }} title={att.originalName}>
+                            {att.originalName}
+                          </div>
+                          <Space size={4} style={{ fontSize: 11, color: '#999' }}>
+                            <span>{formatFileSize(att.fileSize)}</span>
+                            <Space style={{ marginLeft: 'auto' }}>
+                              <Tooltip title="预览">
+                                <Button
+                                  type="text"
+                                  size="small"
+                                  icon={<EyeOutlined />}
+                                  onClick={() => handlePreview(index)}
+                                  style={{ padding: '0 4px', height: 'auto' }}
+                                />
+                              </Tooltip>
+                              <Tooltip title="移除">
+                                <Button
+                                  type="text"
+                                  size="small"
+                                  danger
+                                  icon={<DeleteOutlined />}
+                                  onClick={() => handleRemoveAttachment(att._id)}
+                                  style={{ padding: '0 4px', height: 'auto' }}
+                                />
+                              </Tooltip>
+                            </Space>
+                          </Space>
+                        </div>
+                      </div>
+                    </Col>
+                  ))}
+                </Row>
+              )}
+            </Card>
+          )}
         </Col>
 
-        <Col span={8}>
+        <Col xs={24} lg={8}>
           <Card title="上报须知">
             <div style={{ lineHeight: 2, fontSize: 13, color: '#666' }}>
               <p><strong>1. 异常分类说明：</strong></p>
@@ -319,6 +450,28 @@ const InspectionExceptionReport = () => {
             </div>
           </Card>
 
+          <Card title="联动事件生成" style={{ marginTop: 16 }}>
+            <Alert
+              message=""
+              description="上报异常后可自动生成事件工单，进入事件处理流程"
+              type="warning"
+              showIcon
+              icon={<WarningOutlined />}
+              style={{ marginBottom: 16 }}
+            />
+            <Form form={form} layout="vertical">
+              <Form.Item
+                name="autoCreateEvent"
+                valuePropName="checked"
+              >
+                <Select>
+                  <Option value={true}>上报后自动生成事件</Option>
+                  <Option value={false}>仅上报异常，暂不生成事件</Option>
+                </Select>
+              </Form.Item>
+            </Form>
+          </Card>
+
           {task && (
             <Card title="任务信息" style={{ marginTop: 16 }}>
               <div style={{ lineHeight: 2, fontSize: 13 }}>
@@ -330,6 +483,33 @@ const InspectionExceptionReport = () => {
           )}
         </Col>
       </Row>
+
+      <AttachmentPreview
+        open={previewModal}
+        attachments={exceptionAttachments}
+        currentIndex={previewIndex}
+        onClose={() => setPreviewModal(false)}
+      />
+
+      <Modal
+        title="上传核查材料"
+        open={uploadModal}
+        onCancel={() => setUploadModal(false)}
+        footer={null}
+        width={600}
+        destroyOnClose
+      >
+        <AttachmentUpload
+          mode="multiple"
+          defaultType="inspection_material"
+          showTypeSelect={false}
+          showForm={false}
+          relatedId={exceptionId!}
+          relatedModel="InspectionException"
+          onUploadSuccess={handleUploadSuccess}
+          buttonText="上传材料"
+        />
+      </Modal>
     </div>
   );
 };

@@ -82,6 +82,10 @@ export const getPreviewUrl = (id: string): string => {
   return `/api/attachments/preview/${id}`;
 };
 
+export const getAttachmentPreviewUrl = getPreviewUrl;
+
 export const getDownloadUrl = (id: string): string => {
   return `/api/attachments/download/${id}`;
 };
+
+export const getAttachmentDownloadUrl = getDownloadUrl;

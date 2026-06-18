@@ -17,6 +17,10 @@ import {
   message,
   InputNumber,
   DatePicker,
+  Image,
+  Tooltip,
+  Empty,
+  Divider,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -28,6 +32,12 @@ import {
   ClockCircleOutlined,
   SwapOutlined,
   AuditOutlined,
+  EyeOutlined,
+  DeleteOutlined,
+  FileImageOutlined,
+  FileTextOutlined,
+  PlusOutlined,
+  FolderOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -43,6 +53,17 @@ import { getUsersByRole } from '../api/user';
 import { submitApproval } from '../api/approval';
 import { useAuth } from '../context/AuthContext';
 import dayjs from 'dayjs';
+import type { Attachment } from '../types/attachment';
+import {
+  ATTACHMENT_TYPE_LABELS,
+  ATTACHMENT_TYPE_COLORS,
+  formatFileSize,
+  isImage,
+  getAttachmentPreviewUrl,
+} from '../types/attachment';
+import { getAttachmentsByRelated, updateAttachment } from '../api/attachment';
+import AttachmentUpload from '../components/AttachmentUpload';
+import AttachmentPreview from '../components/AttachmentPreview';
 
 const { Option } = Select;
 const { Step } = Steps;
@@ -59,11 +80,25 @@ const WorkOrderDetail = () => {
   const [handlers, setHandlers] = useState<any[]>([]);
   const { user } = useAuth();
 
+  const [eventImages, setEventImages] = useState<Attachment[]>([]);
+  const [workOrderImages, setWorkOrderImages] = useState<Attachment[]>([]);
+  const [inspectionMaterials, setInspectionMaterials] = useState<Attachment[]>([]);
+
+  const [uploadModal, setUploadModal] = useState<{ visible: boolean; type: string; title: string }>({
+    visible: false,
+    type: '',
+    title: '',
+  });
+  const [previewModal, setPreviewModal] = useState(false);
+  const [previewAttachments, setPreviewAttachments] = useState<Attachment[]>([]);
+  const [previewIndex, setPreviewIndex] = useState(0);
+
   useEffect(() => {
     if (id) {
       loadData();
       loadLogs();
       loadHandlers();
+      loadAllAttachments();
     }
   }, [id]);
 
@@ -94,6 +129,61 @@ const WorkOrderDetail = () => {
     }
   };
 
+  const loadAllAttachments = async () => {
+    if (!id) return;
+    try {
+      const [images, materials]: any[] = await Promise.all([
+        getAttachmentsByRelated(id, 'WorkOrder', 'workorder_image'),
+        getAttachmentsByRelated(id, 'WorkOrder', 'inspection_material'),
+      ]);
+      setWorkOrderImages(images);
+      setInspectionMaterials(materials);
+
+      if (workOrder?.eventId?._id) {
+        const evtImgs: any = await getAttachmentsByRelated(workOrder.eventId._id, 'Event', 'event_image');
+        setEventImages(evtImgs);
+      }
+    } catch (error) {
+      console.error('加载附件失败:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (workOrder?.eventId?._id) {
+      loadEventAttachments();
+    }
+  }, [workOrder?.eventId?._id]);
+
+  const loadEventAttachments = async () => {
+    if (!workOrder?.eventId?._id) return;
+    try {
+      const evtImgs: any = await getAttachmentsByRelated(workOrder.eventId._id, 'Event', 'event_image');
+      setEventImages(evtImgs);
+    } catch (error) {
+      console.error('加载事件附件失败:', error);
+    }
+  };
+
+  const loadWorkOrderAttachments = async () => {
+    if (!id) return;
+    try {
+      const images: any = await getAttachmentsByRelated(id, 'WorkOrder', 'workorder_image');
+      setWorkOrderImages(images);
+    } catch (error) {
+      console.error('加载工单附件失败:', error);
+    }
+  };
+
+  const loadInspectionAttachments = async () => {
+    if (!id) return;
+    try {
+      const materials: any = await getAttachmentsByRelated(id, 'WorkOrder', 'inspection_material');
+      setInspectionMaterials(materials);
+    } catch (error) {
+      console.error('加载核查材料失败:', error);
+    }
+  };
+
   const getStatusTag = (status: string) => {
     const statusMap: Record<string, { color: string; text: string }> = {
       pending: { color: 'orange', text: '待分派' },
@@ -121,7 +211,7 @@ const WorkOrderDetail = () => {
   const getSteps = () => {
     const statusOrder = ['pending', 'assigned', 'processing', 'completed', 'verified', 'closed'];
     const currentIndex = statusOrder.indexOf(workOrder?.status || 'pending');
-    
+
     return [
       { title: '创建工单', status: currentIndex >= 0 ? 'finish' : 'wait' },
       { title: '已分派', status: currentIndex >= 1 ? 'finish' : 'wait' },
@@ -257,6 +347,134 @@ const WorkOrderDetail = () => {
     }
   };
 
+  const handleOpenUpload = (type: string, title: string) => {
+    setUploadModal({ visible: true, type, title });
+  };
+
+  const handleUploadSuccess = async (attachments: any[]) => {
+    if (id && attachments.length > 0) {
+      await Promise.all(
+        attachments.map((att) =>
+          updateAttachment(att._id, {
+            type: uploadModal.type as any,
+          })
+        )
+      );
+    }
+    setUploadModal({ visible: false, type: '', title: '' });
+    loadWorkOrderAttachments();
+    loadInspectionAttachments();
+  };
+
+  const handlePreview = (attachments: Attachment[], index: number) => {
+    setPreviewAttachments(attachments);
+    setPreviewIndex(index);
+    setPreviewModal(true);
+  };
+
+  const handleRemoveAttachment = async (attId: string, reloadFn: () => void) => {
+    try {
+      await updateAttachment(attId, { type: 'other' });
+      message.success('已移除');
+      reloadFn();
+    } catch (error: any) {
+      message.error(error.response?.data?.message || '移除失败');
+    }
+  };
+
+  const renderAttachmentGrid = (
+    attachments: Attachment[],
+    type: 'workorder_image' | 'inspection_material',
+    reloadFn: () => void,
+  ) => {
+    if (attachments.length === 0) {
+      return (
+        <Empty
+          description={
+            type === 'workorder_image' ? '暂无处理图片' : '暂无核查材料'
+          }
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+        />
+      );
+    }
+
+    return (
+      <Row gutter={[12, 12]}>
+        {attachments.map((att, index) => (
+          <Col xs={24} sm={12} md={8} lg={6} key={att._id}>
+            <div style={{
+              border: '1px solid #eee',
+              borderRadius: 4,
+              overflow: 'hidden',
+            }}>
+              <div
+                style={{
+                  height: 120,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: '#f5f5f5',
+                  cursor: 'pointer',
+                }}
+                onClick={() => handlePreview(attachments, index)}
+              >
+                {isImage(att.mimeType) ? (
+                  <Image
+                    src={getAttachmentPreviewUrl(att._id)}
+                    alt={att.originalName}
+                    preview={false}
+                    style={{ width: '100%', height: 120, objectFit: 'cover' }}
+                  />
+                ) : (
+                  <FileTextOutlined style={{ fontSize: 48, color: '#999' }} />
+                )}
+              </div>
+              <div style={{
+                padding: '6px 8px',
+                background: '#fafafa',
+                borderTop: '1px solid #eee',
+              }}>
+                <div style={{
+                  fontSize: 12,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  marginBottom: 2,
+                }} title={att.originalName}>
+                  {att.originalName}
+                </div>
+                <Space size={4} style={{ fontSize: 11, color: '#999' }}>
+                  <span>{formatFileSize(att.fileSize)}</span>
+                  <Space style={{ marginLeft: 'auto' }}>
+                    <Tooltip title="预览">
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<EyeOutlined />}
+                        onClick={() => handlePreview(attachments, index)}
+                        style={{ padding: '0 4px', height: 'auto' }}
+                      />
+                    </Tooltip>
+                    <Tooltip title="移除">
+                      <Button
+                        type="text"
+                        size="small"
+                        danger
+                        icon={<DeleteOutlined />}
+                        onClick={() => handleRemoveAttachment(att._id, reloadFn)}
+                        style={{ padding: '0 4px', height: 'auto' }}
+                      />
+                    </Tooltip>
+                  </Space>
+                </Space>
+              </div>
+            </div>
+          </Col>
+        ))}
+      </Row>
+    );
+  };
+
   const renderActionButtons = () => {
     if (!workOrder) return null;
     const status = workOrder.status;
@@ -333,6 +551,7 @@ const WorkOrderDetail = () => {
         onOk={handleActionSubmit}
         okText="确认"
         cancelText="取消"
+        width={600}
       >
         <Form form={form} layout="vertical">
           {type === 'assign' && (
@@ -352,13 +571,24 @@ const WorkOrderDetail = () => {
           )}
 
           {type === 'complete' && (
-            <Form.Item
-              label="处理结果"
-              name="handleResult"
-              rules={[{ required: true, message: '请填写处理结果' }]}
-            >
-              <TextArea rows={4} placeholder="请描述处理结果..." />
-            </Form.Item>
+            <>
+              <Form.Item
+                label="处理结果"
+                name="handleResult"
+                rules={[{ required: true, message: '请填写处理结果' }]}
+              >
+                <TextArea rows={4} placeholder="请描述处理结果..." />
+              </Form.Item>
+              <Form.Item label="处理图片">
+                <Button
+                  icon={<PlusOutlined />}
+                  onClick={() => handleOpenUpload('workorder_image', '上传处理图片')}
+                  disabled={!id}
+                >
+                  上传处理图片（{workOrderImages.length}）
+                </Button>
+              </Form.Item>
+            </>
           )}
 
           {type === 'verify' && (
@@ -375,6 +605,15 @@ const WorkOrderDetail = () => {
               </Form.Item>
               <Form.Item label="核查备注" name="verifyRemark">
                 <TextArea rows={3} placeholder="请填写核查备注..." />
+              </Form.Item>
+              <Form.Item label="核查材料">
+                <Button
+                  icon={<PlusOutlined />}
+                  onClick={() => handleOpenUpload('inspection_material', '上传核查材料')}
+                  disabled={!id}
+                >
+                  上传核查材料（{inspectionMaterials.length}）
+                </Button>
               </Form.Item>
             </>
           )}
@@ -456,13 +695,18 @@ const WorkOrderDetail = () => {
   return (
     <div>
       <div style={{ marginBottom: 16 }}>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)}>
-          返回
-        </Button>
+        <Space>
+          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)}>
+            返回
+          </Button>
+          <Button onClick={() => navigate('/attachments')}>
+            <FolderOutlined /> 附件中心
+          </Button>
+        </Space>
       </div>
 
       <Row gutter={[16, 16]}>
-        <Col span={16}>
+        <Col xs={24} lg={16}>
           <Card
             title="工单详情"
             extra={renderActionButtons()}
@@ -490,6 +734,58 @@ const WorkOrderDetail = () => {
                 <Descriptions.Item label="核查备注" span={2}>{workOrder.verifyRemark}</Descriptions.Item>
               )}
             </Descriptions>
+          </Card>
+
+          <Card
+            title={
+              <Space>
+                <FileImageOutlined />
+                <span>处理图片</span>
+                <Tag color={ATTACHMENT_TYPE_COLORS.workorder_image}>
+                  {ATTACHMENT_TYPE_LABELS.workorder_image}
+                </Tag>
+                <span style={{ color: '#999', fontSize: 12 }}>共 {workOrderImages.length} 张</span>
+              </Space>
+            }
+            style={{ marginTop: 16 }}
+            extra={
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => handleOpenUpload('workorder_image', '上传处理图片')}
+                size="small"
+              >
+                上传图片
+              </Button>
+            }
+          >
+            {renderAttachmentGrid(workOrderImages, 'workorder_image', loadWorkOrderAttachments)}
+          </Card>
+
+          <Card
+            title={
+              <Space>
+                <FileTextOutlined />
+                <span>核查材料</span>
+                <Tag color={ATTACHMENT_TYPE_COLORS.inspection_material}>
+                  {ATTACHMENT_TYPE_LABELS.inspection_material}
+                </Tag>
+                <span style={{ color: '#999', fontSize: 12 }}>共 {inspectionMaterials.length} 份</span>
+              </Space>
+            }
+            style={{ marginTop: 16 }}
+            extra={
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => handleOpenUpload('inspection_material', '上传核查材料')}
+                size="small"
+              >
+                上传材料
+              </Button>
+            }
+          >
+            {renderAttachmentGrid(inspectionMaterials, 'inspection_material', loadInspectionAttachments)}
           </Card>
 
           <Card title="处理流程" style={{ marginTop: 16 }}>
@@ -528,17 +824,66 @@ const WorkOrderDetail = () => {
           </Card>
         </Col>
 
-        <Col span={8}>
-          <Card title="关联事件">
+        <Col xs={24} lg={8}>
+          <Card
+            title={
+              <Space>
+                <FileImageOutlined />
+                <span>关联事件照片</span>
+                <Tag color={ATTACHMENT_TYPE_COLORS.event_image}>
+                  {ATTACHMENT_TYPE_LABELS.event_image}
+                </Tag>
+              </Space>
+            }
+            extra={
+              <span style={{ color: '#999', fontSize: 12 }}>共 {eventImages.length} 张</span>
+            }
+          >
             {workOrder.eventId ? (
-              <Descriptions column={1} size="small">
-                <Descriptions.Item label="事件标题">{workOrder.eventId.title}</Descriptions.Item>
-                <Descriptions.Item label="事件分类">{workOrder.eventId.category}</Descriptions.Item>
-                <Descriptions.Item label="事发地点">{workOrder.eventId.address}</Descriptions.Item>
-                <Descriptions.Item label="上报人">{workOrder.eventId.reporterName}</Descriptions.Item>
-                <Descriptions.Item label="联系电话">{workOrder.eventId.reporterPhone}</Descriptions.Item>
-                <Descriptions.Item label="事件描述">{workOrder.eventId.description}</Descriptions.Item>
-              </Descriptions>
+              <>
+                <Descriptions column={1} size="small" style={{ marginBottom: 16 }}>
+                  <Descriptions.Item label="事件标题">{workOrder.eventId.title}</Descriptions.Item>
+                  <Descriptions.Item label="事件分类">{workOrder.eventId.category}</Descriptions.Item>
+                  <Descriptions.Item label="事发地点">{workOrder.eventId.address}</Descriptions.Item>
+                  <Descriptions.Item label="上报人">{workOrder.eventId.reporterName}</Descriptions.Item>
+                  <Descriptions.Item label="联系电话">{workOrder.eventId.reporterPhone}</Descriptions.Item>
+                </Descriptions>
+                <Divider style={{ margin: '8px 0 16px' }} />
+                {eventImages.length > 0 ? (
+                  <Row gutter={[8, 8]}>
+                    {eventImages.map((att, index) => (
+                      <Col span={12} key={att._id}>
+                        <div
+                          style={{
+                            height: 80,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            background: '#f5f5f5',
+                            borderRadius: 4,
+                            overflow: 'hidden',
+                            cursor: 'pointer',
+                          }}
+                          onClick={() => handlePreview(eventImages, index)}
+                        >
+                          {isImage(att.mimeType) ? (
+                            <Image
+                              src={getAttachmentPreviewUrl(att._id)}
+                              alt={att.originalName}
+                              preview={false}
+                              style={{ width: '100%', height: 80, objectFit: 'cover' }}
+                            />
+                          ) : (
+                            <FileImageOutlined style={{ fontSize: 28, color: '#999' }} />
+                          )}
+                        </div>
+                      </Col>
+                    ))}
+                  </Row>
+                ) : (
+                  <Empty description="暂无事件照片" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                )}
+              </>
             ) : (
               <div style={{ textAlign: 'center', color: '#999', padding: 20 }}>
                 无关联事件
@@ -561,6 +906,34 @@ const WorkOrderDetail = () => {
       </Row>
 
       {renderActionModal()}
+
+      <Modal
+        title={uploadModal.title}
+        open={uploadModal.visible}
+        onCancel={() => setUploadModal({ visible: false, type: '', title: '' })}
+        footer={null}
+        width={600}
+        destroyOnClose
+      >
+        <AttachmentUpload
+          mode="multiple"
+          defaultType={uploadModal.type as any}
+          showTypeSelect={false}
+          showForm={false}
+          relatedId={id!}
+          relatedModel="WorkOrder"
+          onUploadSuccess={handleUploadSuccess}
+          buttonText={`上传${uploadModal.title.replace('上传', '')}`}
+          accept={uploadModal.type === 'workorder_image' ? 'image/*' : undefined}
+        />
+      </Modal>
+
+      <AttachmentPreview
+        open={previewModal}
+        attachments={previewAttachments}
+        currentIndex={previewIndex}
+        onClose={() => setPreviewModal(false)}
+      />
     </div>
   );
 };

@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Table, Button, Tag, Select, Input, Space, Card, Modal, Descriptions, Badge, message, Form } from 'antd';
-import { PlusOutlined, SearchOutlined, EyeOutlined, FileTextOutlined } from '@ant-design/icons';
+import { Table, Button, Tag, Select, Input, Space, Card, Modal, Descriptions, Badge, message, Form, Row, Col, Image, Tooltip, Empty, Divider } from 'antd';
+import { PlusOutlined, SearchOutlined, EyeOutlined, FileTextOutlined, FileImageOutlined, EyeOutlined as PreviewOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { getEvents, deleteEvent, updateEventStatus } from '../api/event';
 import { createWorkOrder, assignWorkOrder } from '../api/workorder';
 import { getUsersByRole } from '../api/user';
 import { useAuth } from '../context/AuthContext';
+import type { Attachment } from '../types/attachment';
+import { formatFileSize, isImage, getAttachmentPreviewUrl, ATTACHMENT_TYPE_COLORS, ATTACHMENT_TYPE_LABELS } from '../types/attachment';
+import { getAttachmentsByRelated } from '../api/attachment';
+import AttachmentPreview from '../components/AttachmentPreview';
 import dayjs from 'dayjs';
 
 const { Option } = Select;
@@ -21,6 +25,11 @@ const EventList = () => {
   const [currentEvent, setCurrentEvent] = useState<any>(null);
   const [handlers, setHandlers] = useState<any[]>([]);
   const [dispatchForm] = Form.useForm();
+
+  const [eventAttachments, setEventAttachments] = useState<Attachment[]>([]);
+  const [previewModal, setPreviewModal] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState(0);
+
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -92,9 +101,20 @@ const EventList = () => {
     return categoryMap[category] || category;
   };
 
-  const handleViewDetail = (record: any) => {
+  const handleViewDetail = async (record: any) => {
     setCurrentEvent(record);
     setDetailModal(true);
+    try {
+      const attachments: any = await getAttachmentsByRelated(record._id, 'Event', 'event_image');
+      setEventAttachments(attachments);
+    } catch (error) {
+      console.error('加载附件失败:', error);
+    }
+  };
+
+  const handlePreview = (index: number) => {
+    setPreviewIndex(index);
+    setPreviewModal(true);
   };
 
   const handleOpenDispatch = (record: any) => {
@@ -282,19 +302,97 @@ const EventList = () => {
         width={700}
       >
         {currentEvent && (
-          <Descriptions column={2} bordered size="small">
-            <Descriptions.Item label="事件标题" span={2}>{currentEvent.title}</Descriptions.Item>
-            <Descriptions.Item label="事件分类">{getCategoryName(currentEvent.category)}</Descriptions.Item>
-            <Descriptions.Item label="优先级">{getPriorityTag(currentEvent.priority)}</Descriptions.Item>
-            <Descriptions.Item label="状态">{getStatusTag(currentEvent.status)}</Descriptions.Item>
-            <Descriptions.Item label="事发地点">{currentEvent.address}</Descriptions.Item>
-            <Descriptions.Item label="上报人">{currentEvent.reporterName}</Descriptions.Item>
-            <Descriptions.Item label="联系电话">{currentEvent.reporterPhone}</Descriptions.Item>
-            <Descriptions.Item label="上报时间">{dayjs(currentEvent.createdAt).format('YYYY-MM-DD HH:mm:ss')}</Descriptions.Item>
-            <Descriptions.Item label="来源">{currentEvent.source}</Descriptions.Item>
-            <Descriptions.Item label="处理人">{currentEvent.handlerName || '-'}</Descriptions.Item>
-            <Descriptions.Item label="详细描述" span={2}>{currentEvent.description}</Descriptions.Item>
-          </Descriptions>
+          <>
+            <Descriptions column={2} bordered size="small">
+              <Descriptions.Item label="事件标题" span={2}>{currentEvent.title}</Descriptions.Item>
+              <Descriptions.Item label="事件分类">{getCategoryName(currentEvent.category)}</Descriptions.Item>
+              <Descriptions.Item label="优先级">{getPriorityTag(currentEvent.priority)}</Descriptions.Item>
+              <Descriptions.Item label="状态">{getStatusTag(currentEvent.status)}</Descriptions.Item>
+              <Descriptions.Item label="事发地点">{currentEvent.address}</Descriptions.Item>
+              <Descriptions.Item label="上报人">{currentEvent.reporterName}</Descriptions.Item>
+              <Descriptions.Item label="联系电话">{currentEvent.reporterPhone}</Descriptions.Item>
+              <Descriptions.Item label="上报时间">{dayjs(currentEvent.createdAt).format('YYYY-MM-DD HH:mm:ss')}</Descriptions.Item>
+              <Descriptions.Item label="来源">{currentEvent.source}</Descriptions.Item>
+              <Descriptions.Item label="处理人">{currentEvent.handlerName || '-'}</Descriptions.Item>
+              <Descriptions.Item label="详细描述" span={2}>{currentEvent.description}</Descriptions.Item>
+            </Descriptions>
+
+            <Divider orientation="left" style={{ margin: '20px 0 16px' }}>
+              <Space>
+                <FileImageOutlined />
+                <span>事件图片</span>
+                <Tag color={ATTACHMENT_TYPE_COLORS.event_image} style={{ margin: 0 }}>
+                  {ATTACHMENT_TYPE_LABELS.event_image}
+                </Tag>
+              </Space>
+            </Divider>
+
+            {eventAttachments.length === 0 ? (
+              <Empty description="暂无图片" image={Empty.PRESENTED_IMAGE_SIMPLE} style={{ padding: '20px 0' }} />
+            ) : (
+              <Row gutter={[12, 12]}>
+                {eventAttachments.map((att, index) => (
+                  <Col xs={12} sm={8} md={6} key={att._id}>
+                    <div style={{
+                      border: '1px solid #eee',
+                      borderRadius: 4,
+                      overflow: 'hidden',
+                    }}>
+                      <div
+                        style={{
+                          height: 100,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          background: '#f5f5f5',
+                          cursor: 'pointer',
+                        }}
+                        onClick={() => handlePreview(index)}
+                      >
+                        {isImage(att.mimeType) ? (
+                          <Image
+                            src={getAttachmentPreviewUrl(att._id)}
+                            alt={att.originalName}
+                            preview={false}
+                            style={{ width: '100%', height: 100, objectFit: 'cover' }}
+                          />
+                        ) : (
+                          <FileImageOutlined style={{ fontSize: 36, color: '#999' }} />
+                        )}
+                      </div>
+                      <div style={{
+                        padding: '6px 8px',
+                        background: '#fafafa',
+                        borderTop: '1px solid #eee',
+                        fontSize: 11,
+                      }}>
+                        <div style={{
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          marginBottom: 2,
+                        }} title={att.originalName}>
+                          {att.originalName}
+                        </div>
+                        <Space style={{ width: '100%', justifyContent: 'space-between', color: '#999' }}>
+                          <span>{formatFileSize(att.fileSize)}</span>
+                          <Tooltip title="预览">
+                            <Button
+                              type="text"
+                              size="small"
+                              icon={<PreviewOutlined />}
+                              onClick={() => handlePreview(index)}
+                              style={{ padding: 0, height: 'auto' }}
+                            />
+                          </Tooltip>
+                        </Space>
+                      </div>
+                    </div>
+                  </Col>
+                ))}
+              </Row>
+            )}
+          </>
         )}
       </Modal>
 
@@ -328,6 +426,13 @@ const EventList = () => {
           </Form.Item>
         </Form>
       </Modal>
+
+      <AttachmentPreview
+        open={previewModal}
+        attachments={eventAttachments}
+        currentIndex={previewIndex}
+        onClose={() => setPreviewModal(false)}
+      />
     </div>
   );
 };
