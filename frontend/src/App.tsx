@@ -23,6 +23,8 @@ import ApprovalConfig from './pages/ApprovalConfig';
 import ApprovalDetail from './pages/ApprovalDetail';
 import AttachmentList from './pages/AttachmentList';
 import DictionaryConfig from './pages/DictionaryConfig';
+import RegionManage from './pages/RegionManage';
+import RegionStatistics from './pages/RegionStatistics';
 
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   const { isLoggedIn } = useAuth();
@@ -53,6 +55,8 @@ function App() {
               <Route path="system/users" element={<UserManage />} />
               <Route path="system/roles" element={<RoleManage />} />
               <Route path="system/dictionaries" element={<DictionaryConfig />} />
+              <Route path="regions" element={<RegionManage />} />
+              <Route path="regions/statistics" element={<RegionStatistics />} />
               <Route path="knowledge" element={<KnowledgeBase />} />
               <Route path="performance" element={<DepartmentPerformance />} />
               <Route path="approvals" element={<ApprovalList />} />

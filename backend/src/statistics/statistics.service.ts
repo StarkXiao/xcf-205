@@ -6,6 +6,7 @@ import { WorkOrder, WorkOrderStatus } from '../schemas/workorder.schema';
 import { User } from '../schemas/user.schema';
 import { DictionariesService } from '../dictionaries/dictionaries.service';
 import { DictionaryType } from '../schemas/dictionary.schema';
+import { RegionsService } from '../regions/regions.service';
 
 @Injectable()
 export class StatisticsService {
@@ -14,6 +15,7 @@ export class StatisticsService {
     @InjectModel(WorkOrder.name) private workOrderModel: Model<any>,
     @InjectModel(User.name) private userModel: Model<any>,
     private readonly dictionariesService: DictionariesService,
+    private readonly regionsService: RegionsService,
   ) {}
 
   async getOverview() {
@@ -306,6 +308,153 @@ export class StatisticsService {
       total: item.total,
       completed: item.completed,
       rate: item.total > 0 ? Math.round((item.completed / item.total) * 100) : 0,
+    }));
+  }
+
+  async getEventByStreet() {
+    const result = await this.eventModel.aggregate([
+      {
+        $match: {
+          streetId: { $exists: true, $ne: null },
+        },
+      },
+      {
+        $group: {
+          _id: '$streetId',
+          streetName: { $first: '$streetName' },
+          total: { $sum: 1 },
+          pending: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'pending'] }, 1, 0],
+            },
+          },
+          processing: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'processing'] }, 1, 0],
+            },
+          },
+          resolved: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'resolved'] }, 1, 0],
+            },
+          },
+          closed: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'closed'] }, 1, 0],
+            },
+          },
+        },
+      },
+      { $sort: { total: -1 } },
+    ]);
+
+    return result.map(item => ({
+      streetId: item._id,
+      streetName: item.streetName || '未分配',
+      total: item.total,
+      pending: item.pending,
+      processing: item.processing,
+      resolved: item.resolved,
+      closed: item.closed,
+      resolveRate: item.total > 0 ? Math.round((item.resolved / item.total) * 100) : 0,
+    }));
+  }
+
+  async getEventByCommunity(streetId?: string) {
+    const match: any = {
+      communityId: { $exists: true, $ne: null },
+    };
+    if (streetId) {
+      match.streetId = streetId;
+    }
+
+    const result = await this.eventModel.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: '$communityId',
+          communityName: { $first: '$communityName' },
+          streetName: { $first: '$streetName' },
+          total: { $sum: 1 },
+          pending: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'pending'] }, 1, 0],
+            },
+          },
+          processing: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'processing'] }, 1, 0],
+            },
+          },
+          resolved: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'resolved'] }, 1, 0],
+            },
+          },
+        },
+      },
+      { $sort: { total: -1 } },
+    ]);
+
+    return result.map(item => ({
+      communityId: item._id,
+      communityName: item.communityName || '未分配',
+      streetName: item.streetName || '',
+      total: item.total,
+      pending: item.pending,
+      processing: item.processing,
+      resolved: item.resolved,
+      resolveRate: item.total > 0 ? Math.round((item.resolved / item.total) * 100) : 0,
+    }));
+  }
+
+  async getEventByGrid(communityId?: string) {
+    const match: any = {
+      gridId: { $exists: true, $ne: null },
+    };
+    if (communityId) {
+      match.communityId = communityId;
+    }
+
+    const result = await this.eventModel.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: '$gridId',
+          gridName: { $first: '$gridName' },
+          communityName: { $first: '$communityName' },
+          streetName: { $first: '$streetName' },
+          total: { $sum: 1 },
+          pending: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'pending'] }, 1, 0],
+            },
+          },
+          processing: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'processing'] }, 1, 0],
+            },
+          },
+          resolved: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'resolved'] }, 1, 0],
+            },
+          },
+        },
+      },
+      { $sort: { total: -1 } },
+    ]);
+
+    return result.map(item => ({
+      gridId: item._id,
+      gridName: item.gridName || '未分配',
+      communityName: item.communityName || '',
+      streetName: item.streetName || '',
+      total: item.total,
+      pending: item.pending,
+      processing: item.processing,
+      resolved: item.resolved,
+      resolveRate: item.total > 0 ? Math.round((item.resolved / item.total) * 100) : 0,
     }));
   }
 }

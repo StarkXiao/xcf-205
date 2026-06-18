@@ -7,6 +7,7 @@ import { WorkOrder, WorkOrderSchema } from '../schemas/workorder.schema';
 import { User, UserSchema } from '../schemas/user.schema';
 import { Dictionary, DictionarySchema } from '../schemas/dictionary.schema';
 import { DictionariesModule } from '../dictionaries/dictionaries.module';
+import { RegionsModule } from '../regions/regions.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { DictionariesModule } from '../dictionaries/dictionaries.module';
       { name: Dictionary.name, schema: DictionarySchema },
     ]),
     DictionariesModule,
+    RegionsModule,
   ],
   controllers: [StatisticsController],
   providers: [StatisticsService],

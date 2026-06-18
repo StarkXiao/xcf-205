@@ -31,3 +31,15 @@ export const getPriorityStats = () => {
 export const getHandlerRanking = () => {
   return request.get('/statistics/handler-ranking');
 };
+
+export const getEventByStreet = () => {
+  return request.get('/statistics/event-by-street');
+};
+
+export const getEventByCommunity = (streetId?: string) => {
+  return request.get('/statistics/event-by-community', { params: { streetId } });
+};
+
+export const getEventByGrid = (communityId?: string) => {
+  return request.get('/statistics/event-by-grid', { params: { communityId } });
+};

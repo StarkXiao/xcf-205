@@ -18,6 +18,7 @@ import {
   AuditOutlined,
   PaperClipOutlined,
   DatabaseOutlined,
+  BarChartOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useState } from 'react';
@@ -91,6 +92,15 @@ const MainLayout = () => {
       label: '绩效考核',
     },
     {
+      key: 'regions',
+      icon: <EnvironmentOutlined />,
+      label: '区域管理',
+      children: [
+        { key: '/regions', icon: <DatabaseOutlined />, label: '区域配置' },
+        { key: '/regions/statistics', icon: <BarChartOutlined />, label: '区域统计' },
+      ],
+    },
+    {
       key: 'system',
       icon: <SettingOutlined />,
       label: '系统管理',
@@ -135,6 +145,9 @@ const MainLayout = () => {
     if (path.startsWith('/system')) {
       return [path, 'system'];
     }
+    if (path.startsWith('/regions')) {
+      return [path, 'regions'];
+    }
     return [path];
   };
 
@@ -163,7 +176,7 @@ const MainLayout = () => {
           theme="dark"
           mode="inline"
           selectedKeys={getSelectedKeys()}
-          defaultOpenKeys={['events', 'inspection', 'system', 'approvals']}
+          defaultOpenKeys={['events', 'inspection', 'system', 'approvals', 'regions']}
           items={menuItems}
           onClick={({ key }) => navigate(key)}
         />

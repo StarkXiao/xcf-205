@@ -14,6 +14,7 @@ import { PerformanceModule } from './performance/performance.module';
 import { ApprovalsModule } from './approvals/approvals.module';
 import { AttachmentsModule } from './attachments/attachments.module';
 import { DictionariesModule } from './dictionaries/dictionaries.module';
+import { RegionsModule } from './regions/regions.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { DictionariesModule } from './dictionaries/dictionaries.module';
     ApprovalsModule,
     AttachmentsModule,
     DictionariesModule,
+    RegionsModule,
   ],
 })
 export class AppModule {}

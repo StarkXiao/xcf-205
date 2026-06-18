@@ -65,6 +65,24 @@ export class Event {
 
   @Prop({ type: Types.ObjectId, ref: 'InspectionException' })
   inspectionExceptionId: Types.ObjectId;
+
+  @Prop({ type: Types.ObjectId, ref: 'Street' })
+  streetId: Types.ObjectId;
+
+  @Prop()
+  streetName: string;
+
+  @Prop({ type: Types.ObjectId, ref: 'Community' })
+  communityId: Types.ObjectId;
+
+  @Prop()
+  communityName: string;
+
+  @Prop({ type: Types.ObjectId, ref: 'Grid' })
+  gridId: Types.ObjectId;
+
+  @Prop()
+  gridName: string;
 }
 
 export const EventSchema = SchemaFactory.createForClass(Event);

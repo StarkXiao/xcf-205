@@ -46,4 +46,19 @@ export class StatisticsController {
   async getHandlerRanking() {
     return this.statisticsService.getHandlerRanking();
   }
+
+  @Get('event-by-street')
+  async getEventByStreet() {
+    return this.statisticsService.getEventByStreet();
+  }
+
+  @Get('event-by-community')
+  async getEventByCommunity(@Query('streetId') streetId: string) {
+    return this.statisticsService.getEventByCommunity(streetId);
+  }
+
+  @Get('event-by-grid')
+  async getEventByGrid(@Query('communityId') communityId: string) {
+    return this.statisticsService.getEventByGrid(communityId);
+  }
 }

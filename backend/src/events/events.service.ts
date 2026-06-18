@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Event, EventDocument, EventStatus } from '../schemas/event.schema';
 
 @Injectable()
@@ -17,6 +17,9 @@ export class EventsService {
       priority,
       startDate,
       endDate,
+      streetId,
+      communityId,
+      gridId,
     } = query;
     
     const filter: any = {};
@@ -33,6 +36,9 @@ export class EventsService {
     if (status) filter.status = status;
     if (category) filter.category = category;
     if (priority) filter.priority = priority;
+    if (streetId) filter.streetId = new Types.ObjectId(streetId);
+    if (communityId) filter.communityId = new Types.ObjectId(communityId);
+    if (gridId) filter.gridId = new Types.ObjectId(gridId);
     
     if (startDate || endDate) {
       filter.createdAt = {};
@@ -60,10 +66,13 @@ export class EventsService {
     const filter: any = {};
     if (query.status) filter.status = query.status;
     if (query.category) filter.category = query.category;
+    if (query.streetId) filter.streetId = new Types.ObjectId(query.streetId);
+    if (query.communityId) filter.communityId = new Types.ObjectId(query.communityId);
+    if (query.gridId) filter.gridId = new Types.ObjectId(query.gridId);
     
     const events = await this.eventModel
       .find(filter)
-      .select('title category status lng lat address priority createdAt');
+      .select('title category status lng lat address priority createdAt streetId streetName communityId communityName gridId gridName');
     
     return events.filter(e => e.lng && e.lat);
   }
