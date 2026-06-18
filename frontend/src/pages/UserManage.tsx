@@ -3,6 +3,7 @@ import { Table, Button, Tag, Select, Input, Space, Card, Modal, Form, Switch, me
 import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { getUsers, createUser, updateUser, deleteUser } from '../api/user';
 import { getRoles } from '../api/role';
+import { getDictionariesByType } from '../api/dictionary';
 import dayjs from 'dayjs';
 
 const { Option } = Select;
@@ -17,11 +18,13 @@ const UserManage = () => {
   const [modalType, setModalType] = useState<'create' | 'edit'>('create');
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [roles, setRoles] = useState<any[]>([]);
+  const [departmentOptions, setDepartmentOptions] = useState<any[]>([]);
   const [form] = Form.useForm();
 
   useEffect(() => {
     loadData();
     loadRoles();
+    loadDepartments();
   }, [pagination.current, pagination.pageSize, filters]);
 
   const loadData = async () => {
@@ -48,6 +51,20 @@ const UserManage = () => {
     } catch (error) {
       console.error('加载角色列表失败:', error);
     }
+  };
+
+  const loadDepartments = async () => {
+    try {
+      const data: any = await getDictionariesByType('department');
+      setDepartmentOptions(data);
+    } catch (error) {
+      console.error('加载部门列表失败:', error);
+    }
+  };
+
+  const getDepartmentName = (code: string) => {
+    const dept = departmentOptions.find((d: any) => d.code === code);
+    return dept ? dept.name : code;
   };
 
   const handleCreate = () => {
@@ -131,7 +148,7 @@ const UserManage = () => {
       dataIndex: 'department',
       key: 'department',
       width: 150,
-      render: (dept: string) => dept || '-',
+      render: (dept: string) => dept ? getDepartmentName(dept) : '-',
     },
     {
       title: '手机号',
@@ -271,7 +288,13 @@ const UserManage = () => {
             </Select>
           </Form.Item>
           <Form.Item label="部门" name="department">
-            <Input placeholder="请输入部门" />
+            <Select placeholder="请选择部门" allowClear>
+              {departmentOptions.map(dept => (
+                <Option key={dept.code} value={dept.code}>
+                  {dept.name}
+                </Option>
+              ))}
+            </Select>
           </Form.Item>
           <Form.Item label="手机号" name="phone">
             <Input placeholder="请输入手机号" />

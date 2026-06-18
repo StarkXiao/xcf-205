@@ -94,7 +94,7 @@ const DepartmentPerformance = () => {
   };
 
   const getRankingChartOption = () => {
-    const depts = rankingData.map(item => item.department);
+    const depts = rankingData.map(item => item.departmentName || item.department);
     const scores = rankingData.map(item => item.totalScore);
     const completionRates = rankingData.map(item => item.workOrders.completionRate);
     const onTimeRates = rankingData.map(item => item.workOrders.onTimeRate);
@@ -192,9 +192,10 @@ const DepartmentPerformance = () => {
     },
     {
       title: '部门',
-      dataIndex: 'department',
-      key: 'department',
+      dataIndex: 'departmentName',
+      key: 'departmentName',
       width: 120,
+      render: (name: string, record: any) => name || record.department,
     },
     {
       title: '工单完成率',
@@ -601,7 +602,7 @@ const DepartmentPerformance = () => {
             >
               {departmentList.map((dept) => (
                 <Option key={dept.department} value={dept.department}>
-                  {dept.department} ({dept.userCount}人)
+                  {dept.departmentName || dept.department} ({dept.userCount}人)
                 </Option>
               ))}
             </Select>

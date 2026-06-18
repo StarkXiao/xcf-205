@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { getWorkOrders, createWorkOrder, assignWorkOrder } from '../api/workorder';
 import { getUsersByRole } from '../api/user';
 import { getEvents } from '../api/event';
+import { getDictionariesByType } from '../api/dictionary';
 import { useAuth } from '../context/AuthContext';
 import dayjs from 'dayjs';
 
@@ -21,6 +22,8 @@ const WorkOrderList = () => {
   const [currentOrder, setCurrentOrder] = useState<any>(null);
   const [events, setEvents] = useState<any[]>([]);
   const [handlers, setHandlers] = useState<any[]>([]);
+  const [priorityOptions, setPriorityOptions] = useState<any[]>([]);
+  const [departmentOptions, setDepartmentOptions] = useState<any[]>([]);
   const [form] = Form.useForm();
   const [assignForm] = Form.useForm();
   const navigate = useNavigate();
@@ -30,7 +33,34 @@ const WorkOrderList = () => {
     loadData();
     loadEvents();
     loadHandlers();
+    loadDictionaries();
   }, [pagination.current, pagination.pageSize, filters]);
+
+  const loadDictionaries = async () => {
+    try {
+      const [priorities, departments] = await Promise.all([
+        getDictionariesByType('event_priority'),
+        getDictionariesByType('department'),
+      ]);
+      setPriorityOptions(priorities as any[]);
+      setDepartmentOptions(departments as any[]);
+    } catch (error) {
+      console.error('加载字典数据失败:', error);
+    }
+  };
+
+  const getPriorityTag = (priority: string) => {
+    const item = priorityOptions.find(p => p.code === priority);
+    if (item) {
+      return <Tag color={item.color || 'default'}>{item.name}</Tag>;
+    }
+    return <Tag color="default">{priority}</Tag>;
+  };
+
+  const getDepartmentName = (code: string) => {
+    const item = departmentOptions.find(d => d.code === code);
+    return item ? item.name : code;
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -77,17 +107,6 @@ const WorkOrderList = () => {
       closed: { color: 'default', text: '已关闭' },
     };
     const info = statusMap[status] || { color: 'default', text: status };
-    return <Tag color={info.color}>{info.text}</Tag>;
-  };
-
-  const getPriorityTag = (priority: string) => {
-    const priorityMap: Record<string, { color: string; text: string }> = {
-      low: { color: 'green', text: '低' },
-      medium: { color: 'blue', text: '中' },
-      high: { color: 'orange', text: '高' },
-      urgent: { color: 'red', text: '紧急' },
-    };
-    const info = priorityMap[priority] || { color: 'default', text: priority };
     return <Tag color={info.color}>{info.text}</Tag>;
   };
 
@@ -180,7 +199,7 @@ const WorkOrderList = () => {
       dataIndex: 'department',
       key: 'department',
       width: 120,
-      render: (dept: string) => dept || '-',
+      render: (dept: string) => dept ? getDepartmentName(dept) : '-',
     },
     {
       title: '创建时间',
@@ -246,10 +265,9 @@ const WorkOrderList = () => {
             allowClear
             onChange={(value) => setFilters(f => ({ ...f, priority: value }))}
           >
-            <Option value="low">低</Option>
-            <Option value="medium">中</Option>
-            <Option value="high">高</Option>
-            <Option value="urgent">紧急</Option>
+            {priorityOptions.map(item => (
+              <Option key={item.code} value={item.code}>{item.name}</Option>
+            ))}
           </Select>
           <Button type="primary" onClick={() => { setPagination(p => ({ ...p, current: 1 })); loadData(); }} icon={<SearchOutlined />}>
             查询
@@ -310,10 +328,9 @@ const WorkOrderList = () => {
             rules={[{ required: true, message: '请选择优先级' }]}
           >
             <Select placeholder="请选择优先级">
-              <Option value="low">低</Option>
-              <Option value="medium">中</Option>
-              <Option value="high">高</Option>
-              <Option value="urgent">紧急</Option>
+              {priorityOptions.map(item => (
+                <Option key={item.code} value={item.code}>{item.name}</Option>
+              ))}
             </Select>
           </Form.Item>
         </Form>
@@ -334,7 +351,7 @@ const WorkOrderList = () => {
             <Select placeholder="请选择处理人员">
               {handlers.map(h => (
                 <Option key={h._id} value={h._id}>
-                  {h.realName} - {h.department}
+                  {h.realName} - {getDepartmentName(h.department)}
                 </Option>
               ))}
             </Select>

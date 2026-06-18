@@ -5,6 +5,8 @@ import { StatisticsService } from './statistics.service';
 import { Event, EventSchema } from '../schemas/event.schema';
 import { WorkOrder, WorkOrderSchema } from '../schemas/workorder.schema';
 import { User, UserSchema } from '../schemas/user.schema';
+import { Dictionary, DictionarySchema } from '../schemas/dictionary.schema';
+import { DictionariesModule } from '../dictionaries/dictionaries.module';
 
 @Module({
   imports: [
@@ -12,7 +14,9 @@ import { User, UserSchema } from '../schemas/user.schema';
       { name: Event.name, schema: EventSchema },
       { name: WorkOrder.name, schema: WorkOrderSchema },
       { name: User.name, schema: UserSchema },
+      { name: Dictionary.name, schema: DictionarySchema },
     ]),
+    DictionariesModule,
   ],
   controllers: [StatisticsController],
   providers: [StatisticsService],

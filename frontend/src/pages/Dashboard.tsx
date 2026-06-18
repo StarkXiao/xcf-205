@@ -120,7 +120,7 @@ const Dashboard = () => {
   };
 
   const getCategoryChartOption = () => {
-    const categories = categoryStats.map(item => item.categoryName);
+    const categories = categoryStats.map(item => item.categoryName || item.category);
     const counts = categoryStats.map(item => item.count);
     const resolved = categoryStats.map(item => item.resolved);
 
@@ -173,7 +173,7 @@ const Dashboard = () => {
   const getPriorityChartOption = () => {
     const data = priorityStats.map(item => ({
       value: item.events,
-      name: item.priorityName,
+      name: item.priorityName || item.priority,
     }));
 
     const colors = ['#52c41a', '#1890ff', '#faad14', '#f5222d'];
@@ -219,7 +219,7 @@ const Dashboard = () => {
   };
 
   const getDeptChartOption = () => {
-    const depts = departmentStats.map(item => item.department);
+    const depts = departmentStats.map(item => item.departmentName || item.department);
     const completed = departmentStats.map(item => item.completed);
     const processing = departmentStats.map(item => item.processing);
     const pending = departmentStats.map(item => item.pending);

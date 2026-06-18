@@ -7,6 +7,8 @@ import { WorkOrder, WorkOrderSchema } from '../schemas/workorder.schema';
 import { WorkOrderLog, WorkOrderLogSchema } from '../schemas/workorder-log.schema';
 import { InspectionTask, InspectionTaskSchema } from '../schemas/inspection.schema';
 import { User, UserSchema } from '../schemas/user.schema';
+import { Dictionary, DictionarySchema } from '../schemas/dictionary.schema';
+import { DictionariesModule } from '../dictionaries/dictionaries.module';
 
 @Module({
   imports: [
@@ -16,7 +18,9 @@ import { User, UserSchema } from '../schemas/user.schema';
       { name: WorkOrderLog.name, schema: WorkOrderLogSchema },
       { name: InspectionTask.name, schema: InspectionTaskSchema },
       { name: User.name, schema: UserSchema },
+      { name: Dictionary.name, schema: DictionarySchema },
     ]),
+    DictionariesModule,
   ],
   controllers: [PerformanceController],
   providers: [PerformanceService],

@@ -4,6 +4,8 @@ import { Model } from 'mongoose';
 import { Event, EventStatus } from '../schemas/event.schema';
 import { WorkOrder, WorkOrderStatus } from '../schemas/workorder.schema';
 import { User } from '../schemas/user.schema';
+import { DictionariesService } from '../dictionaries/dictionaries.service';
+import { DictionaryType } from '../schemas/dictionary.schema';
 
 @Injectable()
 export class StatisticsService {
@@ -11,6 +13,7 @@ export class StatisticsService {
     @InjectModel(Event.name) private eventModel: Model<any>,
     @InjectModel(WorkOrder.name) private workOrderModel: Model<any>,
     @InjectModel(User.name) private userModel: Model<any>,
+    private readonly dictionariesService: DictionariesService,
   ) {}
 
   async getOverview() {
@@ -74,17 +77,7 @@ export class StatisticsService {
       { $sort: { count: -1 } },
     ]);
 
-    const categoryMap: Record<string, string> = {
-      road: '道路设施',
-      sanitation: '环境卫生',
-      greening: '园林绿化',
-      facility: '公共设施',
-      noise: '噪声污染',
-      water: '供排水',
-      electricity: '电力设施',
-      gas: '燃气设施',
-      other: '其他',
-    };
+    const categoryMap = await this.dictionariesService.getDictionaryMap(DictionaryType.EVENT_CATEGORY);
 
     return result.map(item => ({
       category: item._id,
@@ -233,8 +226,11 @@ export class StatisticsService {
       { $sort: { total: -1 } },
     ]);
 
+    const departmentMap = await this.dictionariesService.getDictionaryMap(DictionaryType.DEPARTMENT);
+
     return result.map(item => ({
       department: item._id || '未分配',
+      departmentName: item._id ? (departmentMap[item._id] || item._id) : '未分配',
       total: item.total,
       completed: item.completed,
       pending: item.pending,
@@ -262,17 +258,18 @@ export class StatisticsService {
       },
     ]);
 
-    const priorityMap: Record<string, string> = {
-      low: '低',
-      medium: '中',
-      high: '高',
-      urgent: '紧急',
-    };
+    const priorityItems = await this.dictionariesService.findByType(DictionaryType.EVENT_PRIORITY);
+    const priorityMap: Record<string, string> = {};
+    const priorityOrder: string[] = [];
+    priorityItems.forEach(item => {
+      priorityMap[item.code] = item.name;
+      priorityOrder.push(item.code);
+    });
 
     const eventPriorityMap = new Map(eventResult.map(item => [item._id, item.count]));
     const workOrderPriorityMap = new Map(workOrderResult.map(item => [item._id, item.count]));
 
-    const priorities = ['low', 'medium', 'high', 'urgent'];
+    const priorities = priorityOrder.length > 0 ? priorityOrder : ['low', 'medium', 'high', 'urgent'];
 
     return priorities.map(priority => ({
       priority,

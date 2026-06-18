@@ -4,6 +4,7 @@ import { ArrowLeftOutlined, PlusOutlined, DeleteOutlined, EnvironmentOutlined, O
 import { useNavigate, useParams } from 'react-router-dom';
 import { createInspectionPlan, updateInspectionPlan, getInspectionPlan, type Checkpoint, type InspectionPlan } from '../api/inspection';
 import { getUsers } from '../api/user';
+import { getDictionariesByType } from '../api/dictionary';
 import { useAuth } from '../context/AuthContext';
 import dayjs from 'dayjs';
 
@@ -19,6 +20,7 @@ const InspectionPlanForm = () => {
   const [checkpointModal, setCheckpointModal] = useState(false);
   const [editingCheckpoint, setEditingCheckpoint] = useState<Checkpoint | null>(null);
   const [checkpointForm] = Form.useForm();
+  const [departmentOptions, setDepartmentOptions] = useState<any[]>([]);
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
@@ -26,6 +28,7 @@ const InspectionPlanForm = () => {
 
   useEffect(() => {
     loadUsers();
+    loadDepartments();
     if (isEdit) {
       loadPlan();
     }
@@ -38,6 +41,20 @@ const InspectionPlanForm = () => {
     } catch (error) {
       console.error('加载用户列表失败:', error);
     }
+  };
+
+  const loadDepartments = async () => {
+    try {
+      const data: any = await getDictionariesByType('department');
+      setDepartmentOptions(data);
+    } catch (error) {
+      console.error('加载部门列表失败:', error);
+    }
+  };
+
+  const getDepartmentName = (code: string) => {
+    const dept = departmentOptions.find((d: any) => d.code === code);
+    return dept ? dept.name : code;
   };
 
   const loadPlan = async () => {
@@ -298,7 +315,7 @@ const InspectionPlanForm = () => {
                 <Select mode="multiple" placeholder="请选择负责人员" allowClear>
                   {users.map(u => (
                     <Option key={u._id} value={u._id}>
-                      {u.realName} - {u.department || '未分配部门'}
+                      {u.realName} - {u.department ? getDepartmentName(u.department) : '未分配部门'}
                     </Option>
                   ))}
                 </Select>

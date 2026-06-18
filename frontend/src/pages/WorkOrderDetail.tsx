@@ -51,6 +51,7 @@ import {
 } from '../api/workorder';
 import { getUsersByRole } from '../api/user';
 import { submitApproval } from '../api/approval';
+import { getDictionariesByType } from '../api/dictionary';
 import { useAuth } from '../context/AuthContext';
 import dayjs from 'dayjs';
 import type { Attachment } from '../types/attachment';
@@ -78,6 +79,9 @@ const WorkOrderDetail = () => {
   const [actionModal, setActionModal] = useState<{ type: string; visible: boolean }>({ type: '', visible: false });
   const [form] = Form.useForm();
   const [handlers, setHandlers] = useState<any[]>([]);
+  const [priorityOptions, setPriorityOptions] = useState<any[]>([]);
+  const [departmentOptions, setDepartmentOptions] = useState<any[]>([]);
+  const [categoryOptions, setCategoryOptions] = useState<any[]>([]);
   const { user } = useAuth();
 
   const [eventImages, setEventImages] = useState<Attachment[]>([]);
@@ -100,7 +104,23 @@ const WorkOrderDetail = () => {
       loadHandlers();
       loadAllAttachments();
     }
+    loadDictionaries();
   }, [id]);
+
+  const loadDictionaries = async () => {
+    try {
+      const [priorities, departments, categories] = await Promise.all([
+        getDictionariesByType('event_priority'),
+        getDictionariesByType('department'),
+        getDictionariesByType('event_category'),
+      ]);
+      setPriorityOptions(priorities as any[]);
+      setDepartmentOptions(departments as any[]);
+      setCategoryOptions(categories as any[]);
+    } catch (error) {
+      console.error('加载字典数据失败:', error);
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -198,14 +218,21 @@ const WorkOrderDetail = () => {
   };
 
   const getPriorityTag = (priority: string) => {
-    const priorityMap: Record<string, { color: string; text: string }> = {
-      low: { color: 'green', text: '低' },
-      medium: { color: 'blue', text: '中' },
-      high: { color: 'orange', text: '高' },
-      urgent: { color: 'red', text: '紧急' },
-    };
-    const info = priorityMap[priority] || { color: 'default', text: priority };
-    return <Tag color={info.color}>{info.text}</Tag>;
+    const item = priorityOptions.find(p => p.code === priority);
+    if (item) {
+      return <Tag color={item.color || 'default'}>{item.name}</Tag>;
+    }
+    return <Tag color="default">{priority}</Tag>;
+  };
+
+  const getDepartmentName = (code: string) => {
+    const item = departmentOptions.find(d => d.code === code);
+    return item ? item.name : code;
+  };
+
+  const getCategoryName = (code: string) => {
+    const item = categoryOptions.find(c => c.code === code);
+    return item ? item.name : code;
   };
 
   const getSteps = () => {
@@ -563,7 +590,7 @@ const WorkOrderDetail = () => {
               <Select placeholder="请选择处理人员">
                 {handlers.map(h => (
                   <Option key={h._id} value={h._id}>
-                    {h.realName} - {h.department}
+                    {h.realName} - {getDepartmentName(h.department)}
                   </Option>
                 ))}
               </Select>
@@ -653,7 +680,7 @@ const WorkOrderDetail = () => {
                 <Select placeholder="请选择改派处理人员">
                   {handlers.filter(h => h._id !== workOrder?.handlerId).map(h => (
                     <Option key={h._id} value={h._id}>
-                      {h.realName} - {h.department}
+                      {h.realName} - {getDepartmentName(h.department)}
                     </Option>
                   ))}
                 </Select>
@@ -718,7 +745,7 @@ const WorkOrderDetail = () => {
               <Descriptions.Item label="状态">{getStatusTag(workOrder.status)}</Descriptions.Item>
               <Descriptions.Item label="创建人">{workOrder.assignerName || '-'}</Descriptions.Item>
               <Descriptions.Item label="处理人">{workOrder.handlerName || '-'}</Descriptions.Item>
-              <Descriptions.Item label="所属部门">{workOrder.department || '-'}</Descriptions.Item>
+              <Descriptions.Item label="所属部门">{workOrder.department ? getDepartmentName(workOrder.department) : '-'}</Descriptions.Item>
               <Descriptions.Item label="创建时间">{dayjs(workOrder.createdAt).format('YYYY-MM-DD HH:mm:ss')}</Descriptions.Item>
               <Descriptions.Item label="工单描述" span={2}>{workOrder.description || '-'}</Descriptions.Item>
               {workOrder.handleResult && (
@@ -843,7 +870,7 @@ const WorkOrderDetail = () => {
               <>
                 <Descriptions column={1} size="small" style={{ marginBottom: 16 }}>
                   <Descriptions.Item label="事件标题">{workOrder.eventId.title}</Descriptions.Item>
-                  <Descriptions.Item label="事件分类">{workOrder.eventId.category}</Descriptions.Item>
+                  <Descriptions.Item label="事件分类">{getCategoryName(workOrder.eventId.category)}</Descriptions.Item>
                   <Descriptions.Item label="事发地点">{workOrder.eventId.address}</Descriptions.Item>
                   <Descriptions.Item label="上报人">{workOrder.eventId.reporterName}</Descriptions.Item>
                   <Descriptions.Item label="联系电话">{workOrder.eventId.reporterPhone}</Descriptions.Item>

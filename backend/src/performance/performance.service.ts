@@ -6,6 +6,8 @@ import { WorkOrder, WorkOrderStatus } from '../schemas/workorder.schema';
 import { WorkOrderLog, WorkOrderLogDocument } from '../schemas/workorder-log.schema';
 import { InspectionTask, InspectionTaskStatus } from '../schemas/inspection.schema';
 import { User } from '../schemas/user.schema';
+import { DictionariesService } from '../dictionaries/dictionaries.service';
+import { DictionaryType } from '../schemas/dictionary.schema';
 
 @Injectable()
 export class PerformanceService {
@@ -15,6 +17,7 @@ export class PerformanceService {
     @InjectModel(WorkOrderLog.name) private workOrderLogModel: Model<WorkOrderLogDocument>,
     @InjectModel(InspectionTask.name) private inspectionTaskModel: Model<any>,
     @InjectModel(User.name) private userModel: Model<any>,
+    private readonly dictionariesService: DictionariesService,
   ) {}
 
   private getMonthRange(year: number, month: number) {
@@ -61,6 +64,7 @@ export class PerformanceService {
 
   async getDepartmentRanking(year: number, month: number) {
     const { startDate, endDate } = this.getMonthRange(year, month);
+    const departmentMap = await this.dictionariesService.getDictionaryMap(DictionaryType.DEPARTMENT);
 
     const workOrderStats = await this.workOrderModel.aggregate([
       {
@@ -301,6 +305,7 @@ export class PerformanceService {
 
       return {
         department,
+        departmentName: departmentMap[department] || department,
         workOrders: {
           total: woStat.totalWorkOrders,
           completed: woStat.completedWorkOrders,
@@ -583,7 +588,7 @@ export class PerformanceService {
   }
 
   async getDepartmentList() {
-    const users = await this.userModel.aggregate([
+    const userStats = await this.userModel.aggregate([
       {
         $match: {
           department: { $exists: true, $ne: '' },
@@ -595,12 +600,15 @@ export class PerformanceService {
           userCount: { $sum: 1 },
         },
       },
-      { $sort: { _id: 1 } },
     ]);
 
-    return users.map(item => ({
-      department: item._id,
-      userCount: item.userCount,
+    const userCountMap = new Map(userStats.map(item => [item._id, item.userCount]));
+    const dictionaryDepts = await this.dictionariesService.findByType(DictionaryType.DEPARTMENT);
+
+    return dictionaryDepts.map(dept => ({
+      department: dept.code,
+      departmentName: dept.name,
+      userCount: userCountMap.get(dept.code) || 0,
     }));
   }
 }
